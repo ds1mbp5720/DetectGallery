@@ -21,4 +21,10 @@ dependencyResolutionManagement {
 
 rootProject.name = "DetectGallery"
 include(":app")
- 
+include(":feature:live")
+include(":feature:search")
+include(":feature:people")
+include(":core:data")
+include(":core:ml")
+include(":core:ui")
+include(":core:domain")

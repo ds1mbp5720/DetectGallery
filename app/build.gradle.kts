@@ -42,6 +42,9 @@ android {
 }
 
 dependencies {
+    listOf(":core:domain", ":core:data", ":core:ml", ":core:ui",
+        ":feature:live", ":feature:search", ":feature:people").forEach { implementation(project(it)) }
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
