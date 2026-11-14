@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -10,12 +12,10 @@ android {
     }
 
     defaultConfig {
-        minSdk = 36
-
+        minSdk = 28
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -32,15 +32,29 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    buildFeatures {
+        buildConfig = true
+    }
+    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
 }
 
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 dependencies {
     implementation(project(":core:domain"))
+    implementation(project(":core:imaging"))
 
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+    implementation(libs.work.runtime)
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.androidx.compiler)
     testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.test.ext)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.coroutines.test)
 }
