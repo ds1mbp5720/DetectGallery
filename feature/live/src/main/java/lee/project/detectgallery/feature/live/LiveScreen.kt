@@ -1,3 +1,5 @@
+@file:Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
+
 package lee.project.detectgallery.feature.live
 
 import android.Manifest

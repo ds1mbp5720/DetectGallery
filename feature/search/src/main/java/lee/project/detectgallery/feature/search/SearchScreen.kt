@@ -1,5 +1,13 @@
 package lee.project.detectgallery.feature.search
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import  lee.project.detectgallery.core.ui.components.ChipRow
+import  lee.project.detectgallery.core.ui.components.SegmentedTabs
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
@@ -26,8 +34,13 @@ import lee.project.detectgallery.core.ui.FaceThumb
 import lee.project.detectgallery.core.ui.PhotoGrid
 
 private val QUICK = listOf("음식", "바다", "하늘", "웃는", "단체", "셀카", "흔들린")
+private val IMAGE_MODES = listOf(
+    ImageSearchMode.PERSON to "인물",
+    ImageSearchMode.SCENE to "배경·장면",
+    ImageSearchMode.DUPLICATE to "겹치는 사진",
+)
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)   // FlowRow, ModalBottomSheet
+@OptIn(ExperimentalMaterial3Api::class)   // ModalBottomSheet
 @Composable
 fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -35,48 +48,54 @@ fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
         uri?.let { vm.onIntent(SearchIntent.QueryImage(it.toString())) }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        OutlinedTextField(
+    Column(Modifier.fillMaxSize()) {
+        SearchField(
             value = state.query,
             onValueChange = { vm.onIntent(SearchIntent.QueryChanged(it)) },
-            placeholder = { Text("음식, 바다, 웃는, 엄마, 작년 3월…") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { vm.onIntent(SearchIntent.SubmitKeyword) }),
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            onSearch = { vm.onIntent(SearchIntent.SubmitKeyword) },
+            onPickPhoto = { picker.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly)) },
+            onTune = { vm.onIntent(SearchIntent.ShowSensitivity(true)) },
+            modifier = Modifier
+                .padding(horizontal = 20.dp)
+                .padding(top = 8.dp),
         )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            QUICK.forEach { k -> AssistChip(onClick = { vm.onIntent(SearchIntent.QuickKeyword(k)) }, label = { Text(k) }) }
-        }
+        // 한 줄 고정. 넘치는 칩은 가로로 밀어서 본다. 바깥 Column 에 가로 여백을 주지 않아야 화면 끝까지 밀린다.
+        ChipRow(
+            items = QUICK,
+            onClick = { vm.onIntent(SearchIntent.QuickKeyword(it)) },
+            selected = state.query.trim()
+                .takeIf { it in QUICK },   // 검색창 글자와 같은 칩을 강조 (직접 쳐도, 칩을 눌러도 같다)
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        // 사진 한 장으로 찾을 때의 기준 (검색창 오른쪽 사진 버튼). 설명 줄은 두지 않는다: 세로 공간을 아끼고,
+        // 안내는 검색 전 SearchGuide 가 한다.
+        SegmentedTabs(
+            options = IMAGE_MODES,
+            selected = state.imageMode,
+            onSelect = { vm.onIntent(SearchIntent.ImageModeChanged(it)) },
+            modifier = Modifier
+                .padding(horizontal = 20.dp)
+                .padding(top = 4.dp),
+        )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(ImageSearchMode.PERSON to "인물", ImageSearchMode.SCENE to "배경·장면", ImageSearchMode.DUPLICATE to "겹치는 사진")
-                .forEach { (mode, label) ->
-                    FilterChip(
-                        selected = state.imageMode == mode,
-                        onClick = { vm.onIntent(SearchIntent.ImageModeChanged(mode)) },
-                        label = { Text(label) },
-                    )
-                }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { picker.launch(PickVisualMediaRequest(PickVisualMedia.ImageOnly)) }) { Text("사진으로 찾기") }
-            TextButton(onClick = { vm.onIntent(SearchIntent.ShowSensitivity(true)) }) { Text("민감도") }
-        }
-
-        state.indexProgress?.let { p ->
-            Text("사진 분석 중 ${p.done} / ${p.total}. 분석된 사진에서만 찾아요.", style = MaterialTheme.typography.bodySmall)
-            LinearProgressIndicator(progress = { if (p.total == 0) 0f else p.done / p.total.toFloat() }, Modifier.fillMaxWidth())
-        }
-        if (state.isSearching) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 8.dp))
+        // 색인 진행률은 모든 탭 위의 현황 줄(LensStatusBar)이 보여 준다.
+        if (state.isSearching) LinearProgressIndicator(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+        )
         when (state.notice) {
-            SearchNotice.NO_RESULTS -> Text("맞는 사진이 없어요.", Modifier.padding(16.dp))
-            SearchNotice.NO_FACE_IN_QUERY -> Text("고른 사진에서 얼굴을 찾지 못했어요. 배경·장면으로 바꿔 보세요.", Modifier.padding(16.dp))
-            SearchNotice.FACE_UNAVAILABLE -> Text("인물 찾기는 아직 준비 중이에요. 배경·장면이나 겹치는 사진으로 찾아 보세요.", Modifier.padding(16.dp))
-            SearchNotice.FACES_DISABLED -> Text("인물 기능이 꺼져 있어요. 인물 탭에서 켜거나 배경·장면으로 찾아 보세요.", Modifier.padding(16.dp))
-            SearchNotice.UNREADABLE -> Text("사진을 열지 못했어요. 다른 사진을 골라 주세요.", Modifier.padding(16.dp))
-            SearchNotice.FAILED -> Text("검색하지 못했어요. 다시 시도해 주세요.", Modifier.padding(16.dp))
+            SearchNotice.NO_RESULTS -> Notice("맞는 사진이 없어요.")
+            SearchNotice.NO_FACE_IN_QUERY -> Notice("고른 사진에서 얼굴을 찾지 못했어요. 배경·장면으로 바꿔 보세요.")
+            SearchNotice.FACE_UNAVAILABLE -> Notice("인물 찾기는 아직 준비 중이에요. 배경·장면이나 겹치는 사진으로 찾아 보세요.")
+            SearchNotice.FACES_DISABLED -> Notice("인물 기능이 꺼져 있어요. 인물 탭에서 켜거나 배경·장면으로 찾아 보세요.")
+            SearchNotice.UNREADABLE -> Notice("사진을 열지 못했어요. 다른 사진을 골라 주세요.")
+            SearchNotice.FAILED -> Notice("검색하지 못했어요. 다시 시도해 주세요.")
             null ->
-                if (state.results.isEmpty() && !state.isSearching) SearchGuide(state.indexProgress, Modifier.weight(1f))
+                if (state.results.isEmpty() && !state.isSearching) SearchGuide(
+                    state.indexProgress,
+                    Modifier.weight(1f)
+                )
                 else PhotoGrid(state.results, Modifier.weight(1f))
         }
     }
@@ -90,10 +109,73 @@ fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
     val choices = state.faceChoices
     val queryUri = state.queryUri
     if (choices != null && queryUri != null) {
-        FaceChoiceDialog(Uri.parse(queryUri), choices, onPick = { vm.onIntent(SearchIntent.FaceChosen(it)) }) {
+        FaceChoiceDialog(
+            Uri.parse(queryUri),
+            choices,
+            onPick = { vm.onIntent(SearchIntent.FaceChosen(it)) }) {
             vm.onIntent(SearchIntent.CancelFaceChoice)
         }
     }
+}
+
+/** 테두리 없는 회색 채움 검색창. 오른쪽 아이콘 두 개: 사진으로 찾기·검색 민감도. */
+@Composable
+private fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    onPickPhoto: () -> Unit,
+    onTune: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.fillMaxWidth(),
+        // singleLine 은 입력 글자에만 적용된다. 안내 문구도 한 줄로 막아야 큰 글꼴에서 검색창이 커지지 않는다.
+        placeholder = { Text("음식, 바다, 엄마, 작년 3월", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+        trailingIcon = {
+            Row {
+                IconButton(onClick = onPickPhoto) {
+                    Icon(
+                        Icons.Outlined.AddPhotoAlternate,
+                        contentDescription = "사진으로 찾기"
+                    )
+                }
+                IconButton(onClick = onTune) {
+                    Icon(
+                        Icons.Outlined.Tune,
+                        contentDescription = "검색 민감도"
+                    )
+                }
+            }
+        },
+        singleLine = true,
+        shape = MaterialTheme.shapes.small,
+        textStyle = MaterialTheme.typography.bodyLarge,
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = colors.surfaceVariant,
+            unfocusedContainerColor = colors.surfaceVariant,
+            focusedIndicatorColor = Color.Transparent,      // 밑줄 없음
+            unfocusedIndicatorColor = Color.Transparent,
+            unfocusedLeadingIconColor = colors.onSurfaceVariant,
+            unfocusedTrailingIconColor = colors.onSurfaceVariant,
+        ),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+    )
+}
+
+@Composable
+private fun Notice(text: String) {
+    Text(
+        text,
+        Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /**
@@ -102,7 +184,12 @@ fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
  */
 @Composable
 private fun SearchGuide(progress: IndexProgress?, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         if (progress != null) {
             Text("갤러리 사진을 분석하고 있어요", style = MaterialTheme.typography.titleMedium)
             Text(
@@ -113,7 +200,10 @@ private fun SearchGuide(progress: IndexProgress?, modifier: Modifier = Modifier)
         } else {
             Text("이렇게 찾아 보세요", style = MaterialTheme.typography.titleMedium)
             Text("• 위의 칩을 누르거나 \"엄마 작년 바다\" 처럼 검색해요", style = MaterialTheme.typography.bodyMedium)
-            Text("• \"사진으로 찾기\" 로 고른 사진과 같은 사람·비슷한 장면을 찾아요", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "• 검색창 오른쪽 사진 버튼으로 사진을 고르면, 위 '인물 / 배경·장면 / 겹치는 사진' 중 고른 기준으로 찾아요",
+                style = MaterialTheme.typography.bodyMedium
+            )
             Text("• 카메라 탭에서 음식·사람을 비추고 박스를 눌러요", style = MaterialTheme.typography.bodyMedium)
         }
     }
@@ -121,7 +211,12 @@ private fun SearchGuide(progress: IndexProgress?, modifier: Modifier = Modifier)
 
 /** 쿼리 사진에 얼굴이 여럿일 때 찾을 사람을 고른다. 왼쪽부터 (사진 속 위치 순). */
 @Composable
-private fun FaceChoiceDialog(uri: Uri, faces: List<DetectedFace>, onPick: (DetectedFace) -> Unit, onDismiss: () -> Unit) {
+private fun FaceChoiceDialog(
+    uri: Uri,
+    faces: List<DetectedFace>,
+    onPick: (DetectedFace) -> Unit,
+    onDismiss: () -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("누구를 찾을까요?") },
@@ -130,7 +225,9 @@ private fun FaceChoiceDialog(uri: Uri, faces: List<DetectedFace>, onPick: (Detec
                 items(faces.sortedBy { it.box.left }) { f ->
                     FaceThumb(
                         uri, f.box.left, f.box.top, f.box.right, f.box.bottom,
-                        Modifier.size(72.dp).clickable { onPick(f) },
+                        Modifier
+                            .size(72.dp)
+                            .clickable { onPick(f) },
                     )
                 }
             }
@@ -146,7 +243,10 @@ private fun FaceChoiceDialog(uri: Uri, faces: List<DetectedFace>, onPick: (Detec
  */
 @Composable
 private fun SensitivitySheet(value: Sensitivity, onChange: (Sensitivity) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
+    Column(Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 24.dp)
+        .padding(bottom = 32.dp)) {
         Text("검색 민감도", style = MaterialTheme.typography.titleMedium)
         Text(
             "결과에 다른 사진이 섞이면 엄격하게, 찾는 사진이 빠지면 느슨하게 옮겨 보세요.",
@@ -155,7 +255,10 @@ private fun SensitivitySheet(value: Sensitivity, onChange: (Sensitivity) -> Unit
         )
         SensitivityRow("같은 사람 찾기", value.person) { onChange(value.copy(person = it)) }
         SensitivityRow("비슷한 배경·장면 찾기", value.scene) { onChange(value.copy(scene = it)) }
-        TextButton(onClick = { onChange(Sensitivity()) }, modifier = Modifier.align(Alignment.End)) { Text("기본값으로") }
+        TextButton(
+            onClick = { onChange(Sensitivity()) },
+            modifier = Modifier.align(Alignment.End)
+        ) { Text("기본값으로") }
         Text(
             "인물 목록의 묶음은 바뀌지 않아요. 같은 사람이 둘로 나뉘었으면 인물 화면에서 합쳐 주세요.",
             style = MaterialTheme.typography.bodySmall,
@@ -166,7 +269,16 @@ private fun SensitivitySheet(value: Sensitivity, onChange: (Sensitivity) -> Unit
 @Composable
 private fun SensitivityRow(label: String, value: Float, onChange: (Float) -> Unit) {
     Text(label, style = MaterialTheme.typography.bodyMedium)
-    Slider(value = value, onValueChange = onChange, valueRange = -1f..1f, steps = 3)
+    Slider(
+        value = value,
+        onValueChange = onChange,
+        valueRange = -1f..1f,
+        steps = 3,
+        colors = SliderDefaults.colors(
+            inactiveTrackColor = MaterialTheme.colorScheme.outline,          // 시트 바탕 위에서도 보이게
+            inactiveTickColor = MaterialTheme.colorScheme.surface,
+        ),
+    )
     Row(Modifier.fillMaxWidth()) {
         Text("엄격하게", style = MaterialTheme.typography.labelSmall)
         Spacer(Modifier.weight(1f))

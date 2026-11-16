@@ -108,3 +108,9 @@ data class IndexProgress(val done: Int, val total: Int)
 data class Sensitivity(val person: Float = 0f, val scene: Float = 0f) {
     fun clamped() = Sensitivity(person.coerceIn(-1f, 1f), scene.coerceIn(-1f, 1f))
 }
+
+/**
+ * 상단 현황 줄의 원본 값. galleryCount = 앱이 볼 수 있는 사진 수, analyzedCount = 지금 검색되는 사진 수.
+ * 정리 전에는 analyzedCount 가 더 클 수 있다 (표시 쪽에서 자른다).
+ */
+data class LibraryStatus(val galleryCount: Int, val analyzedCount: Int, val indexing: Boolean)

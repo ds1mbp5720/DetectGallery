@@ -85,7 +85,7 @@ private val LensShapes = Shapes(
 
 /** 앱 전체 테마. 동적 색(배경화면 색)은 쓰지 않는다: 기기마다 색이 달라지면 회색 단계·파란 강조의 대비가 무너진다. */
 @Composable
-fun GalleryLensTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun DetectGallery(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (dark) Dark else Light,
         typography = LensTypography,

@@ -100,6 +100,8 @@ interface QueryVocabulary {
 
 interface IndexStatus {
     val progress: Flow<IndexProgress?>   // null = 색인 중 아님
+    /** 갤러리·분석 현황(LibraryStatus). 값이 하나라도 바뀌면 낸다. */
+     val library: Flow<LibraryStatus>
 }
 
 /** 사용자 설정. 구현: SharedPreferences (:core:data). */

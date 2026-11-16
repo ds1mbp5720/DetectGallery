@@ -83,6 +83,7 @@ class IndexNewPhotosUseCase @Inject constructor(
             .sortedByDescending { it.dateTaken }   // 최신 사진부터 검색 가능하게
 
         var done = 0
+        if (targets.isNotEmpty()) onProgress(0, targets.size)   // 시작 즉시 "분석 중" (첫 배치까지 기다리지 않게)
         for (chunk in targets.chunked(BATCH)) {
             val analyzed = chunk.map { analyze(it) }
             // 저장 앞뒤로 표시: 앞 = 저장 커밋 직후 프로세스가 죽어도 표시가 남는다(apply 는 비동기).

@@ -1,6 +1,7 @@
 package lee.project.detectgallery.core.data.db
 
 import androidx.room.*
+import kotlinx.coroutines.flow.Flow
 
 data class StateRow(val mediaId: Long, val generation: Long, val indexVersion: Int, val facesDone: Boolean)
 data class VectorRow(val mediaId: Long, val vector: FloatArray)
@@ -44,7 +45,8 @@ interface PhotoIndexDao {
         ids.chunked(500).forEach { deleteScenes(it); deleteFaces(it); deleteLabels(it); deletePhotos(it) }
     }
 
-    @Query("SELECT mediaId, generation, indexVersion, facesDone FROM photo") suspend fun states(): List<StateRow>
+    @Query("SELECT mediaId, generation, indexVersion, facesDone FROM photo")
+    suspend fun states(): List<StateRow>
     @Query("SELECT mediaId, generation, indexVersion, facesDone FROM photo WHERE mediaId IN (:ids)") suspend fun statesOf(ids: List<Long>): List<StateRow>
 
     /** 내용이 그대로인 사진의 일시 실패: 기존 장면·얼굴·라벨은 두고 버전만 0 으로 → 다음 실행에서 재시도. */
@@ -55,6 +57,7 @@ interface PhotoIndexDao {
         WHERE p.vectorVersion = :version
     """)
     suspend fun scenes(version: Int): List<VectorRow>
+
     @Query("""
         SELECT f.mediaId, f.vector FROM face f JOIN photo p ON p.mediaId = f.mediaId
         WHERE f.excluded = 0 AND p.vectorVersion = :version
@@ -62,10 +65,16 @@ interface PhotoIndexDao {
     suspend fun faces(version: Int): List<VectorRow>
 
     // 인물 기능 끄기: 얼굴과 인물(이름 포함)을 모두 지운다
-    @Query("DELETE FROM face") suspend fun deleteAllFaces()
-    @Query("DELETE FROM person") suspend fun deleteAllPersons()
+    @Query("DELETE FROM face")
+    suspend fun deleteAllFaces()
+
+    @Query("DELETE FROM person")
+    suspend fun deleteAllPersons()
+
     /** 얼굴로 만든 상태 태그(웃는·단체·셀카)도 얼굴 분석 결과다 */
-    @Query("DELETE FROM photo_label WHERE label IN (:tags)") suspend fun deleteLabelsNamed(tags: List<String>)
+    @Query("DELETE FROM photo_label WHERE label IN (:tags)")
+    suspend fun deleteLabelsNamed(tags: List<String>)
+
     /**
      * 얼굴 분석 기록도 지운다 → 다시 켜면 그 사진들이 다시 분석된다.
      * 분석은 사진 단위라 장면·라벨·해시도 다시 계산된다 (전체 재색인과 같은 시간). 그동안 기존 장면·라벨 검색은 계속 된다.
@@ -76,7 +85,16 @@ interface PhotoIndexDao {
     }
 
     /** 장면·얼굴 벡터와 같은 기준: 일시 실패(indexVersion = 0, 내용 그대로)인 사진도 겹치는 사진 검색에 남는다 */
-    @Query("SELECT mediaId, dHash FROM photo WHERE vectorVersion > 0") suspend fun hashes(): List<HashRow>
+    @Query("SELECT mediaId, dHash FROM photo WHERE vectorVersion > 0")
+    suspend fun hashes(): List<HashRow>
+
+    /**
+     * 지금 검색되는 사진 수 = 현재 버전 벡터가 있는 사진. 검색 캐시(scenes/faces)와 같은 기준이다.
+     * indexVersion 으로 세면 일시 실패(markFailed, 벡터는 남아 검색됨)가 "대기" 로 잡힌다.
+     * photo 테이블이 바뀔 때마다 Room 이 다시 센다 (1만 행 COUNT 는 1ms 안팎).
+     */
+    @Query("SELECT COUNT(*) FROM photo WHERE vectorVersion = :version")
+    fun analyzedCount(version: Int): Flow<Int>
 
     @Query("""
         SELECT f.mediaId FROM face f JOIN person p ON p.id = f.personId

@@ -8,19 +8,23 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.hilt.work.HiltWorker
-import androidx.work.*
-import lee.project.detectgallery.core.domain.model.IndexProgress
-import lee.project.detectgallery.core.domain.port.IndexStatus
-import lee.project.detectgallery.core.domain.port.IndexTrigger
-import lee.project.detectgallery.core.domain.usecase.IndexNewPhotosUseCase
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import lee.project.detectgallery.core.domain.port.IndexTrigger
+import lee.project.detectgallery.core.domain.usecase.IndexNewPhotosUseCase
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -132,18 +136,6 @@ object IndexScheduler {
                 ).build(),
         )
     }
-}
-
-class WorkManagerIndexStatus @Inject constructor(@ApplicationContext context: Context) : IndexStatus {
-    // 앱 실행 시 작업만 보면 충전 중·새 사진 색인의 진행률이 안 보인다 → 태그로 셋 다 본다
-    override val progress: Flow<IndexProgress?> =
-        WorkManager.getInstance(context).getWorkInfosByTagFlow(IndexScheduler.TAG).map { infos ->
-            infos.asSequence()
-                .filter { it.state == WorkInfo.State.RUNNING }
-                .map { IndexProgress(it.progress.getInt(IndexPhotosWorker.KEY_DONE, 0), it.progress.getInt(IndexPhotosWorker.KEY_TOTAL, 0)) }
-                .filter { it.total > 0 }   // 잠금 대기 중이거나 할 일이 없는 작업은 배너를 띄우지 않는다 ("0 / 0" 방지)
-                .maxByOrNull { it.total }  // 둘 이상 돌면 실제로 일하는 쪽
-        }
 }
 
 /** 화면에서 "다시 색인" 이 필요할 때 (인물 기능 켜기 등). 도는 색인이 있으면 그 뒤에 붙인다. */
