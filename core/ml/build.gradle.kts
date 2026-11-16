@@ -54,7 +54,7 @@ dependencies {
     implementation(libs.coroutines.play.services)  // Task.await()
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    // P3: implementation("com.microsoft.onnxruntime:onnxruntime-android:<버전>") — ClipTextEncoder 와 함께
+    implementation(libs.onnxruntime.android)
     androidTestImplementation(libs.androidx.test.ext)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.coroutines.test)

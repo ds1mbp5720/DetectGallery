@@ -1,0 +1,15 @@
+{
+  "음식":   ["Food", "Cuisine", "Fast food", "Dessert", "Baked goods"],
+  "바다":   ["Sea", "Beach"],
+  "하늘":   ["Sky"],
+  "강아지": ["Dog"],
+  "고양이": ["Cat"],
+  "꽃":     ["Flower"],
+  "웃는":   ["state:smiling"],
+  "미소":   ["state:smiling"],
+  "단체":   ["state:group"],
+  "셀카":   ["state:selfie"],
+  "어두운": ["state:dark"],
+  "흔들린": ["state:blurry"],
+  "흐린":   ["state:blurry"]
+}

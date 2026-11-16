@@ -17,6 +17,7 @@ hilt = "2.52"
 hiltAndroidx = "1.2.0"
 lifecycle = "2.8.6"
 navigation = "2.8.2"
+onnxruntimeAndroid = "1.19.2"
 room = "2.6.1"
 work = "2.9.1"
 camerax = "1.4.0"
@@ -50,6 +51,7 @@ lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-com
 lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
 
+onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version.ref = "onnxruntimeAndroid" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
