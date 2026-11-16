@@ -60,4 +60,7 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.work)
     implementation(libs.work.runtime)
+    implementation(libs.hilt.navigation.compose)       // AppNavHost 의 hiltViewModel()
+    implementation(libs.lifecycle.viewmodel.compose)
+
 }

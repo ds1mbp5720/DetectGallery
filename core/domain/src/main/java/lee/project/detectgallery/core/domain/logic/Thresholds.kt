@@ -6,7 +6,10 @@ package lee.project.detectgallery.core.domain.logic
  */
 object Thresholds {
     const val SCENE = 0.5f
-    const val PERSON = 0.6f
+    // FaceNet-512 기준 출발점: deepface 의 코사인 거리 기준 0.30 → 유사도 0.7. 128차원 모델이면 거리 0.40 → 0.6.
+    // 주의: 모델 파일 저장소 코드는 같은 0.3/0.4 를 "유사도 하한" 으로 쓴다. 그 숫자를 그대로 옮기면 거의 모두 한 사람이 된다.
+    // 0.6 그대로 512차원 모델을 쓰면 느슨해서 다른 사람이 한 인물로 섞인다.
+    const val PERSON = 0.7f
     const val SEMANTIC = 0.2f            // CLIP 텍스트↔이미지 점수는 낮게 분포한다
     const val DUPLICATE_MAX_HAMMING = 5
 

@@ -1,5 +1,8 @@
 package lee.project.detectgallery.core.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.draw.clip
 import android.content.ActivityNotFoundException
 import android.content.ContentUris
 import android.content.Context
@@ -37,17 +40,26 @@ fun openInGallery(context: Context, mediaId: Long) {
 }
 // ponytail: 스와이프로 결과를 넘겨 보는 앱 안 뷰어는 필요해지면 추가 (HorizontalPager + 같은 ids).
 
-/** onClick 을 주지 않으면 누른 사진을 갤러리 앱으로 연다. */
+/** onClick 을 주지 않으면 누른 사진을 갤러리 앱으로 연다. 둥근 모서리 + 4dp 간격, 읽는 동안은 회색 칸. */
 @Composable
 fun PhotoGrid(ids: List<Long>, modifier: Modifier = Modifier, onClick: ((Long) -> Unit)? = null) {
     val context = LocalContext.current
-    LazyVerticalGrid(GridCells.Adaptive(104.dp), modifier, contentPadding = PaddingValues(2.dp)) {
+    LazyVerticalGrid(
+        GridCells.Adaptive(104.dp),
+        modifier,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         items(ids, key = { it }) { id ->
             AsyncImage(
                 model = mediaUri(id),
                 contentDescription = "사진",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.aspectRatio(1f).padding(1.dp)
+                modifier = Modifier
+                    .aspectRatio(1f)
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onClick?.invoke(id) ?: openInGallery(context, id) },
             )
         }

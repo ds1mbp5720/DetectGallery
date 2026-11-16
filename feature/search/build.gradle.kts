@@ -54,6 +54,8 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.coil.compose)
+    implementation(libs.compose.icons.extended)
+
     // :feature:live 만
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
