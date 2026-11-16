@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import dagger.hilt.android.AndroidEntryPoint
-import lee.project.detectgallery.core.ui.theme.GalleryLensTheme
+import lee.project.detectgallery.core.ui.theme.DetectGallery
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            GalleryLensTheme {
+            DetectGallery {
                 GalleryAccessGate { access -> AppNavHost(access) }
             }
         }

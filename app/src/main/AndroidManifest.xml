@@ -34,7 +34,7 @@
             </intent-filter>
         </activity>
 
-        <!-- WorkManager 기본 초기화 끄기: GalleryLensApp 의 Configuration 을 쓰게 한다 -->
+        <!-- WorkManager 기본 초기화 끄기: DetectGalleryApp 의 Configuration 을 쓰게 한다 -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
