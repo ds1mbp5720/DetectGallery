@@ -20,6 +20,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import lee.project.detectgallery.core.ui.mediaUri
 import coil.compose.AsyncImage
+import lee.project.detectgallery.core.domain.logic.FaceAnalysisState
 
 /** 인물 목록. 누르면 상세(얼굴 나누기·빼기·이름), 길게 누르면 합치기. 상단 스위치로 인물 기능 전체를 끈다. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -91,10 +92,12 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
                     .fillMaxSize()
                     .padding(32.dp), contentAlignment = Alignment.Center
             ) {
-                Text("사진 분석이 끝나면 얼굴별로 묶어서 보여드려요.")
+                Text(faceStatusText(state.faceState))      // 왜 비어 있는지 상태별로 알린다
             }
             return@Column
         }
+        // 인물이 있어도 얼굴만 남은 경우(모델을 나중에 넣었거나 기능을 다시 켬): 위 현황 줄 숫자는 장면 기준이라 여기서 알린다
+        (state.faceState as? FaceAnalysisState.FacesCatchingUp)?.let { FaceProgressRow(it.done, it.total) }
 
         LazyVerticalGrid(GridCells.Adaptive(96.dp), contentPadding = PaddingValues(12.dp)) {
             items(state.people, key = { it.id }) { p ->
@@ -204,3 +207,31 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (St
     )
 }
 // 목록의 대표 사진은 사진 전체를 원형으로 자른다. 얼굴만 보이게 하려면 대표 얼굴의 box 로 FaceThumb 를 쓴다.
+
+/** 인물 목록이 비었을 때의 안내. 꺼짐은 위에서 따로 처리하지만 when 을 빠짐없이 쓰려고 둔다. */
+private fun faceStatusText(s: FaceAnalysisState?): String = when (s) {
+    FaceAnalysisState.ModelMissing -> "인물 모델이 설치되지 않아 얼굴을 분석하지 않아요. 사진·키워드 검색은 그대로 쓸 수 있어요."
+    FaceAnalysisState.Disabled -> "인물 기능이 꺼져 있어요. 얼굴을 분석하지 않고 얼굴 데이터도 보관하지 않아요."
+    is FaceAnalysisState.FacesCatchingUp -> "얼굴을 분석하고 있어요 (${s.done} / ${s.total}장). 얼굴이 나온 사진이 분석되면 여기에 묶여요."
+    is FaceAnalysisState.Analyzing ->
+        if (s.total == null) "사진을 확인하고 있어요."
+        else "사진을 분석하고 있어요 (${s.done} / ${s.total}장). 얼굴이 나온 사진이 분석되면 여기에 묶여요."
+    FaceAnalysisState.NoFacesFound -> "사진에서 얼굴을 찾지 못했어요."
+    FaceAnalysisState.Ready, null -> "사진 분석이 끝나면 얼굴별로 묶어서 보여드려요."
+}
+
+/** 인물 목록 위 진행 줄. 얼굴만 따로 분석 중일 때만 보인다. */
+@Composable
+private fun FaceProgressRow(done: Int, total: Int) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(
+            "얼굴 분석 $done / ${total}장",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LinearProgressIndicator(
+            progress = { if (total == 0) 0f else done / total.toFloat() },
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+    }
+}

@@ -96,6 +96,10 @@ interface PhotoIndexDao {
     @Query("SELECT COUNT(*) FROM photo WHERE vectorVersion = :version")
     fun analyzedCount(version: Int): Flow<Int>
 
+    /** 얼굴 분석까지 마친 사진 수. facesDone 은 현재 버전으로 성공 저장될 때만 1 이라 analyzedCount 이하다. */
+    @Query("SELECT COUNT(*) FROM photo WHERE vectorVersion = :version AND facesDone = 1")
+    fun facesAnalyzedCount(version: Int): Flow<Int>
+
     @Query("""
         SELECT f.mediaId FROM face f JOIN person p ON p.id = f.personId
         WHERE p.name IN (:names)
