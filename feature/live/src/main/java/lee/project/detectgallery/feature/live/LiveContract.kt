@@ -1,7 +1,7 @@
 package lee.project.detectgallery.feature.live
 
-import app.gallerylens.domain.model.ImageFrame
-import app.gallerylens.domain.model.LiveDetection
+import lee.project.detectgallery.core.domain.model.ImageFrame
+import lee.project.detectgallery.core.domain.model.LiveDetection
 
 data class LiveUiState(
     val frameW: Int = 0,

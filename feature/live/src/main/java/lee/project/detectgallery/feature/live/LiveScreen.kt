@@ -36,12 +36,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.gallerylens.domain.logic.toImagePoint
-import app.gallerylens.domain.logic.toViewRect
-import app.gallerylens.imaging.toBitmap
-import app.gallerylens.domain.model.DetectionKind
-import app.gallerylens.ui.PhotoGrid
-import app.gallerylens.ui.mediaUri
+import lee.project.detectgallery.core.domain.logic.toImagePoint
+import lee.project.detectgallery.core.domain.logic.toViewRect
+import lee.project.detectgallery.core.imaging.toBitmap
+import lee.project.detectgallery.core.domain.model.DetectionKind
+import lee.project.detectgallery.core.ui.PhotoGrid
+import lee.project.detectgallery.core.ui.mediaUri
 import coil.compose.AsyncImage
 import java.util.concurrent.Executors
 
