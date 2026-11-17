@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
 
 enum class GalleryAccess { FULL, PARTIAL, NONE }
 
@@ -51,6 +52,19 @@ fun galleryAccess(context: Context): GalleryAccess {
         Build.VERSION.SDK_INT < 33 && granted(Manifest.permission.READ_EXTERNAL_STORAGE) -> GalleryAccess.FULL
         else -> GalleryAccess.NONE
     }
+}
+
+private const val PREFS_APP = "app"
+private const val KEY_NOTIFICATIONS_ASKED = "notifications.asked"
+
+/** Android 13+ 이고, 아직 허용 안 했고, 우리가 한 번도 묻지 않았을 때만. 시스템도 두 번 거부하면 더 띄우지 않는다. */
+private fun shouldAskNotifications(context: Context): Boolean =
+    Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).getBoolean(KEY_NOTIFICATIONS_ASKED, false)
+
+private fun markNotificationsAsked(context: Context) {
+    context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit().putBoolean(KEY_NOTIFICATIONS_ASKED, true).apply()
 }
 
 private fun galleryPermissions(): Array<String> = when {
@@ -92,6 +106,14 @@ fun GalleryAccessGate(content: @Composable (GalleryAccess) -> Unit) {
         denied = access == GalleryAccess.NONE
         scheduleIfAllowed(context, afterCurrent = true)
     }
+    // 분석 진행 알림 권한 (Android 13+). 사진 접근을 받은 뒤 한 번만 묻는다. 거부해도 분석은 그대로 된다
+    val notificationLauncher = rememberLauncherForActivityResult(RequestPermission()) { }
+    LaunchedEffect(access) {
+        if (access != GalleryAccess.NONE && shouldAskNotifications(context)) {
+            markNotificationsAsked(context)
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     // 앱으로 돌아올 때마다: 설정에서 권한을 바꿨을 수 있다.
     // 접근 범위가 바뀐 경우만 도는 색인 뒤에 한 번 더 붙인다. 부분 접근이라는 이유만으로 붙이면 회전·앱 전환·
@@ -113,6 +135,7 @@ fun GalleryAccessGate(content: @Composable (GalleryAccess) -> Unit) {
         content(access)
     }
 }
+
 /**
  * 사진 권한이 없을 때(첫 실행 포함) 보이는 소개·권한 화면.
  * 탭 화면의 Scaffold 밖이라 바탕색·시스템 막대 여백을 여기서 직접 챙긴다. 큰 글자에서도 버튼까지 닿게 스크롤된다.
@@ -130,12 +153,18 @@ private fun AccessIntro(denied: Boolean, onAllow: () -> Unit, onOpenSettings: ()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 32.dp),
         ) {
-            Text("Detect Gallery", style = MaterialTheme.typography.titleSmall, color = colors.primary)
+            Text(
+                "Detect Gallery",
+                style = MaterialTheme.typography.titleSmall,
+                color = colors.primary
+            )
             Text(
                 "갤러리 속 사진을\n바로 찾아 드려요",
                 style = MaterialTheme.typography.headlineSmall,
                 color = colors.onBackground,
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp).semantics { heading() },
+                modifier = Modifier
+                    .padding(top = 8.dp, bottom = 24.dp)
+                    .semantics { heading() },
             )
             Feature(Icons.Outlined.PhotoCamera, "카메라로 찾기", "비추고 박스를 누르면 같은 사람·비슷한 사진을 찾아요.")
             Feature(Icons.Outlined.Search, "낱말로 찾기", "\"바다\", \"엄마\", \"작년 3월\" 처럼 입력해 찾아요.")
@@ -169,12 +198,17 @@ private fun AccessIntro(denied: Boolean, onAllow: () -> Unit, onOpenSettings: ()
                     "사진 접근을 허용해야 시작할 수 있어요. 눌러도 다시 묻지 않으면 설정 → 권한에서 사진 접근을 허용해 주세요.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.error,
-                    modifier = Modifier.padding(bottom = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                    modifier = Modifier
+                        .padding(bottom = 12.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
             Button(onClick = onAllow, modifier = Modifier.fillMaxWidth()) { Text("사진 접근 허용") }
             if (denied) {
-                TextButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text("설정에서 허용") }
+                TextButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("설정에서 허용") }
             }
         }
     }
@@ -185,11 +219,17 @@ private fun AccessIntro(denied: Boolean, onAllow: () -> Unit, onOpenSettings: ()
 private fun Feature(icon: ImageVector, title: String, body: String) {
     val colors = MaterialTheme.colorScheme
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 10.dp).semantics(mergeDescendants = true) {},
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp)
+            .semantics(mergeDescendants = true) {},
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Box(
-            Modifier.size(40.dp).clip(CircleShape).background(colors.primaryContainer),
+            Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(colors.primaryContainer),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = null, tint = colors.onPrimaryContainer)
@@ -203,7 +243,10 @@ private fun Feature(icon: ImageVector, title: String, body: String) {
 
 private fun openAppSettings(context: Context) {
     context.startActivity(
-        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+        Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", context.packageName, null)
+        )
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
     )
 }

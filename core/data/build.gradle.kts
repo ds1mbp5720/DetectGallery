@@ -48,10 +48,12 @@ dependencies {
     ksp(libs.room.compiler)
     implementation(libs.work.runtime)
     implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
     implementation(libs.hilt.work)
+    implementation(libs.androidx.core)
+    ksp(libs.hilt.compiler)
     ksp(libs.hilt.androidx.compiler)
     testImplementation(libs.junit)
+
     androidTestImplementation(libs.androidx.test.ext)
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.runner)
