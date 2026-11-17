@@ -46,7 +46,7 @@ private fun fmt(n: Int): String = NumberFormat.getIntegerInstance(Locale.KOREA).
 /**
  * 모든 탭 위에 항상 보이는 현황 줄. 카드 48dp + 위아래 2dp = 52dp 고정 (부분 접근이어도 같다).
  * 진행 막대는 카드 아래 가장자리에 3dp 로 붙여 줄을 늘리지 않는다.
- * partial = "선택한 사진만 허용" 상태: 카드 전체가 "사진 더 고르기" 버튼이 된다
+ * partial = "선택한 사진만 허용" 상태: 카드 전체가 버튼이 되어 사진 범위 메뉴(더 고르기·전체 허용)를 연다
  * (따로 버튼을 두면 최소 터치 영역 48dp 때문에 줄이 커진다).
  */
 @Composable
@@ -55,7 +55,7 @@ fun LensStatusBar(
     analyzedCount: Int,
     indexing: Boolean,
     partial: Boolean,
-    onRequestMore: () -> Unit,
+    onPartialClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val t = statusText(galleryCount, analyzedCount, indexing, partial)
@@ -70,7 +70,7 @@ fun LensStatusBar(
             .then(
                 if (partial) {
                     Modifier
-                        .clickable(onClickLabel = "사진 더 고르기", role = Role.Button, onClick = onRequestMore)
+                        .clickable(onClickLabel = "사진 더 고르기", role = Role.Button, onClick = onPartialClick)
                         .semantics { stateDescription = "선택한 사진만 허용" }   // TalkBack: 문구 + 상태 + 동작
                 } else Modifier,
             ),
@@ -90,7 +90,7 @@ fun LensStatusBar(
             if (t.badge.isNotEmpty()) StatusBadge(t.badge, highlighted = indexing)
             if (partial) {
                 Text(
-                    "더 고르기 ›",
+                    "사진 범위 ›",
                     Modifier.padding(start = 8.dp).clearAndSetSemantics {},   // "›" 를 기호 이름으로 읽지 않게. 동작은 카드의 onClickLabel 이 알린다
                     style = MaterialTheme.typography.labelMedium,
                     color = colors.primary,

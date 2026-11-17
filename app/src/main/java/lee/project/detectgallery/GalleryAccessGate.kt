@@ -82,7 +82,7 @@ private fun scheduleIfAllowed(context: Context, afterCurrent: Boolean) {
     if (galleryAccess(context) != GalleryAccess.NONE) IndexScheduler.schedule(context, afterCurrent)
 }
 
-/** 부분 접근 상태에서 다시 부르면 Android 14 가 사진 선택 화면을 띄운다. 고른 뒤 색인을 다시 예약한다. */
+/** 부분 접근 상태에서 다시 부르면 Android 14 가 사진을 더 고르게 한다(선택 화면 또는 "더 선택·모두 허용" 대화상자, 버전마다 다름). 끝나면 색인을 다시 예약한다. */
 @Composable
 fun rememberGalleryRequest(): () -> Unit {
     val context = LocalContext.current
@@ -241,7 +241,7 @@ private fun Feature(icon: ImageVector, title: String, body: String) {
     }
 }
 
-private fun openAppSettings(context: Context) {
+internal fun openAppSettings(context: Context) {   // AppNavHost 의 부분 접근 메뉴도 쓴다
     context.startActivity(
         Intent(
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
