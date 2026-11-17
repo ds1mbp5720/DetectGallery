@@ -7,6 +7,7 @@ import lee.project.detectgallery.core.domain.port.SettingsRepository
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 
 /**
  * 한 인물에 다른 사람이 섞였을 때, 고른 얼굴들을 새 인물로 떼어 낸다.
@@ -21,7 +22,9 @@ class SplitPersonUseCase @Inject constructor(private val persons: PersonReposito
         if (faceIds.isEmpty()) return null
         // 빼기와 같이: 나누기 직후 화면을 나가도 중심 재계산까지 끝내야 섞인 중심이 남지 않는다
         return withContext(NonCancellable) {
-            persons.split(faceIds)?.also { persons.recomputeCenters(force = true) }
+            persons.split(faceIds)?.also {
+                persons.recomputeCentersAfterEdit()
+            }
         }
     }
 }
@@ -38,7 +41,7 @@ class ExcludeFacesUseCase @Inject constructor(
             val n = persons.excludeFaces(faceIds)  // 얼굴을 전부 뺀 인물(이름 있어도)도 여기서 지워진다
             if (n > 0) {
                 index.invalidateFaceCache()        // 검색이 메모리의 얼굴 목록을 쓰므로 비워야 뺀 얼굴이 안 걸린다
-                persons.recomputeCenters(force = true)
+                persons.recomputeCentersAfterEdit()
             }
             n                                      // 0 = 고른 얼굴이 이미 없음 (다시 분석됨)
         }
@@ -64,5 +67,19 @@ class SetFaceFeatureUseCase @Inject constructor(
         settings.setFacesEnabled(enabled)         // 먼저 바꿔야 도는 색인이 새 얼굴을 더 만들지 않는다
         if (!enabled) index.deleteAllFaceData()   // 즉시 지운다. 겹친 저장이 남기면 색인 끝의 정리가 지운다
         trigger.requestIndex()                    // 켜기: 얼굴 채우기 / 끄기: 도는 색인 뒤에 정리 실행
+    }
+}
+
+/**
+ * 편집(합치기·나누기·빼기) 뒤 중심 재계산. 편집 자체는 이미 커밋됐으므로 재계산이 실패해도 편집 실패로 알리지 않는다.
+ * 저장소가 편집 때 낡음 표시를 올려 두므로 다음 색인이 다시 계산한다. 원인은 저장소(RoomPersonRepository)가 로그로 남긴다.
+ */
+internal suspend fun PersonRepository.recomputeCentersAfterEdit() {
+    try {
+        recomputeCenters(force = true)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // 다음 색인에서 다시 계산된다
     }
 }

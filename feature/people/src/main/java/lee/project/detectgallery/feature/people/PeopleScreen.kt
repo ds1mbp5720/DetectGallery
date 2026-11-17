@@ -34,6 +34,10 @@ import lee.project.detectgallery.core.domain.logic.FaceAnalysisState
 @Composable
 fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(state.notice) {
+        state.notice?.let { snackbar.showSnackbar(it); vm.onIntent(PeopleIntent.NoticeShown) }
+    }
 
     Column(Modifier.fillMaxSize()) {
         // 상단: 회색 카드 안에 제목·설명·스위치
@@ -188,6 +192,8 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
                 }
             },
         )
+        // 실패 안내. 이 화면은 NavHost 의 Box 안에 놓이므로 화면 크기만큼 펼친 뒤 아래쪽에 붙인다
+        SnackbarHost(snackbar, Modifier.fillMaxSize().wrapContentHeight(Alignment.Bottom))
     }
 }
 
@@ -197,7 +203,14 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
  */
 @Composable
 internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var field by remember { mutableStateOf(TextFieldValue(initial, selection = TextRange(0, initial.length))) }
+    var field by remember {
+        mutableStateOf(
+            TextFieldValue(
+                initial,
+                selection = TextRange(0, initial.length)
+            )
+        )
+    }
     var error by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     val submit: () -> Unit = {
@@ -213,7 +226,9 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (St
                 value = field,
                 // TextFieldValue 는 커서·선택만 바뀌어도 불린다 → 글자가 바뀔 때만 오류를 지운다
                 onValueChange = { if (it.text != field.text) error = false; field = it },
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focus),
                 singleLine = true,
                 isError = error,
                 placeholder = { Text("엄마") },
@@ -244,9 +259,11 @@ private fun faceStatusText(s: FaceAnalysisState?): String = when (s) {
 /** 인물 목록 위 진행 줄. 얼굴만 따로 분석 중일 때만 보인다. */
 @Composable
 private fun FaceProgressRow(done: Int, total: Int) {
-    Column(Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
         Text(
             "얼굴 분석 $done / ${total}장",
             style = MaterialTheme.typography.labelMedium,

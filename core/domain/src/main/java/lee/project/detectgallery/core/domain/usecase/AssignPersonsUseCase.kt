@@ -45,7 +45,7 @@ class MergePersonsUseCase @Inject constructor(private val persons: PersonReposit
         // 나누기·빼기와 같이: 합친 직후 화면을 나가도 중심 재계산까지 끝내야 다음 색인에서 합치기가 풀리지 않는다
         withContext(NonCancellable) {
             persons.merge(from, into)
-            persons.recomputeCenters(force = true)
+            persons.recomputeCentersAfterEdit()   // 실패해도 합치기는 이미 저장됐다 (PersonEditUseCases.kt)
         }
     }
 }

@@ -1,5 +1,6 @@
 package lee.project.detectgallery.feature.people.detail
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -20,7 +21,7 @@ data class PersonDetailUiState(
     val selected: Set<Long> = emptySet(),   // 고른 얼굴 id. 비어 있으면 보기 모드
     val renaming: Boolean = false,
     val gone: Boolean = false,              // 얼굴을 다 빼서 인물이 사라짐 → 화면을 닫는다
-    val notice: String? = null,             // 나누기·빼기 실패 안내 (스낵바)
+    val notice: String? = null,             // 나누기·빼기·이름 저장 실패 안내 (스낵바)
     val loaded: Boolean = false,            // 첫 DB 결과 전에는 "사진 없음" 안내·"이름 없는 인물" 을 그리지 않는다
 )
 
@@ -76,7 +77,16 @@ class PersonDetailViewModel @Inject constructor(
             is PersonDetailIntent.ShowRename -> renaming.value = intent.show
             is PersonDetailIntent.Rename -> {
                 renaming.value = false
-                viewModelScope.launch { namePerson(personId, intent.name) }
+                viewModelScope.launch {
+                    try {
+                        namePerson(personId, intent.name)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {   // 그대로 두면 앱이 죽는다
+                        Log.e("DetailViewModel", "이름 저장 실패", e)
+                        notice.value = "이름을 저장하지 못했어요. 다시 해 주세요."
+                    }
+                }
             }
         }
     }
@@ -87,8 +97,16 @@ class PersonDetailViewModel @Inject constructor(
         if (ids.isEmpty()) return
         selected.value = emptySet()
         viewModelScope.launch {
-            val ok = try { block(ids) } catch (e: CancellationException) { throw e } catch (e: Exception) { false }
+            val ok = try {
+                block(ids)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("DetailViewModel", "나누기·빼기 실패", e)   // 원인을 logcat 에 남긴다
+                false
+            }
             if (!ok) notice.value = "바꾸지 못했어요. 목록이 새로 고쳐졌으니 다시 골라 주세요."
         }
     }
+    private companion object { const val TAG = "PersonDetail" }
 }

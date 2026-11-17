@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 
 @Singleton
 class RoomPersonRepository @Inject constructor(
@@ -29,9 +31,15 @@ class RoomPersonRepository @Inject constructor(
     // 재계산할 계기가 없다 → 프로세스가 바뀌어도 남도록 저장해 둔다.
     private val prefs = context.getSharedPreferences("persons", Context.MODE_PRIVATE)
 
-    override suspend fun unassignedFaces() = dao.unassignedFaces(INDEX_VERSION).map { FaceRow(it.id, it.vector) }
-    override suspend fun centers() = dao.centers(INDEX_VERSION).map { PersonCenter(it.personId, it.vector) }
-    override suspend fun create(center: FloatArray) = dao.insert(PersonEntity(center = center, centerVersion = INDEX_VERSION))
+    override suspend fun unassignedFaces() =
+        dao.unassignedFaces(INDEX_VERSION).map { FaceRow(it.id, it.vector) }
+
+    override suspend fun centers() =
+        dao.centers(INDEX_VERSION).map { PersonCenter(it.personId, it.vector) }
+
+    override suspend fun create(center: FloatArray) =
+        dao.insert(PersonEntity(center = center, centerVersion = INDEX_VERSION))
+
     override suspend fun rename(personId: Long, name: String) = dao.rename(personId, name)
     override suspend fun deleteOrphans() = dao.deleteOrphans()
 
@@ -41,7 +49,11 @@ class RoomPersonRepository @Inject constructor(
     }
 
     override suspend fun merge(from: Long, into: Long) {
-        if (dao.merge(from, into)) markCentersDirty()   // false = 그사이 한쪽이 사라짐. 목록이 새로 고쳐지므로 다시 고르면 된다
+        if (dao.merge(
+                from,
+                into
+            )
+        ) markCentersDirty()   // false = 그사이 한쪽이 사라짐. 목록이 새로 고쳐지므로 다시 고르면 된다
     }
 
     /** 낡음 표시는 횟수로 센다. 0 = 깨끗함. 재계산은 시작할 때 본 값이 끝날 때도 같을 때만 0 으로 지운다. */
@@ -54,13 +66,21 @@ class RoomPersonRepository @Inject constructor(
         if (!force && seen == 0L) return
         // 읽기·계산·쓰기를 한 트랜잭션으로. 그 사이에 화면에서 합치기가 끼면 합치기 전 상태로 계산한 중심이
         // 합친 인물을 덮어쓴다.
-        db.withTransaction {
-            // 현재 버전 얼굴만 쓴다. 모델 교체 중 새 얼굴이 아직 없는 인물은 옛 중심·옛 버전 그대로 남아 배정 후보에서 빠진다.
-            val centers = dao.facesWithPerson(INDEX_VERSION)
-                .groupBy({ it.personId }, { it.vector })
-                .mapNotNull { (id, vs) -> meanNormalized(vs)?.let { id to it } }
-                .toMap()
-            dao.updateCenters(centers, INDEX_VERSION)
+        try {
+            db.withTransaction {
+                // 현재 버전 얼굴만 쓴다. 모델 교체 중 새 얼굴이 아직 없는 인물은 옛 중심·옛 버전 그대로 남아 배정 후보에서 빠진다.
+                val centers = dao.facesWithPerson(INDEX_VERSION)
+                    .groupBy({ it.personId }, { it.vector })
+                    .mapNotNull { (id, vs) -> meanNormalized(vs)?.let { id to it } }
+                    .toMap()
+                dao.updateCenters(centers, INDEX_VERSION)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 편집 화면은 이 예외를 삼키므로(recomputeCentersAfterEdit) 원인은 여기서 남긴다. 색인 Worker 는 그대로 재시도
+            Log.e("Persons", "인물 중심 재계산 실패 (낡음 표시가 남아 다음 실행이 다시 계산)", e)
+            throw e
         }
         // 커밋 뒤, 그사이 다른 쪽(배정·나누기)이 표시를 올리지 않았을 때만 지운다.
         // 예외·취소·프로세스 종료면 여기까지 오지 않아 표시가 남고 다음 실행이 다시 계산한다.
@@ -69,13 +89,24 @@ class RoomPersonRepository @Inject constructor(
         }
     }
 
-    private companion object { const val KEY_DIRTY = "centersDirtySeq" }
+    private companion object {
+        const val KEY_DIRTY = "centersDirtySeq"
+    }
 
     override fun persons(): Flow<List<Person>> =
-        dao.persons().map { rows -> rows.map { Person(it.id, it.name, it.coverMediaId, it.photoCount) } }
+        dao.persons()
+            .map { rows -> rows.map { Person(it.id, it.name, it.coverMediaId, it.photoCount) } }
 
     override fun faces(personId: Long): Flow<List<PersonFace>> =
-        dao.facesOf(personId).map { rows -> rows.map { PersonFace(it.id, it.mediaId, Box(it.left, it.top, it.right, it.bottom)) } }
+        dao.facesOf(personId).map { rows ->
+            rows.map {
+                PersonFace(
+                    it.id,
+                    it.mediaId,
+                    Box(it.left, it.top, it.right, it.bottom)
+                )
+            }
+        }
 
     override suspend fun split(faceIds: List<Long>): Long? = db.withTransaction {
         // 읽기·옮기기를 한 트랜잭션으로: 그사이 재색인으로 얼굴 id 가 바뀌면 아무것도 안 옮기고 성공으로 보고하게 된다.

@@ -1,5 +1,7 @@
 package lee.project.detectgallery.feature.people
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import lee.project.detectgallery.core.domain.model.Person
@@ -23,6 +25,7 @@ data class PeopleUiState(
     val facesEnabled: Boolean = true,
     val confirmDisable: Boolean = false, // 끄기 확인 대화상자 (데이터를 지우므로 확인을 받는다)
     val faceState: FaceAnalysisState? = null,   // null = 현황 첫 값 전
+    val notice: String? = null,                  // 합치기·켜기/끄기 실패 안내 (스낵바)
 )
 
 sealed interface PeopleIntent {
@@ -32,6 +35,7 @@ sealed interface PeopleIntent {
     data class ToggleFaces(val enabled: Boolean) : PeopleIntent
     data object ConfirmDisable : PeopleIntent
     data object CancelDisable : PeopleIntent
+    data object NoticeShown : PeopleIntent
 }
 
 @HiltViewModel
@@ -46,14 +50,19 @@ class PeopleViewModel @Inject constructor(
 
     private val mergeSource = MutableStateFlow<Person?>(null)
     private val confirmDisable = MutableStateFlow(false)
+    private val notice = MutableStateFlow<String?>(null)
 
     /** 사진 수 많은 순. 이름을 붙이면 키워드 검색에서 그 이름으로 찾을 수 있다. */
     val state: StateFlow<PeopleUiState> =
         combine(
-            persons.persons(), mergeSource, settings.facesEnabled, confirmDisable,
+            // combine 은 5개까지라 확인 대화상자·안내를 한 쌍으로 묶는다
+            persons.persons(),
+            mergeSource,
+            settings.facesEnabled,
+            confirmDisable.combine(notice, ::Pair),
             // 현황 첫 값(갤러리 수, 약 0.5초)을 기다리느라 인물 목록이 늦게 뜨지 않게 null 로 먼저 시작한다
             indexStatus.library.map<LibraryStatus, LibraryStatus?> { it }.onStart { emit(null) },
-        ) { people, source, enabled, confirm, lib ->
+        ) { people, source, enabled, (confirm, msg), lib ->
             PeopleUiState(
                 people, source, enabled, confirm,
                 faceState = faceAnalysisState(
@@ -65,6 +74,7 @@ class PeopleViewModel @Inject constructor(
                     indexing = lib?.indexing == true,
                     personCount = people.size,
                 ),
+                notice = msg,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PeopleUiState())
 
@@ -75,24 +85,52 @@ class PeopleViewModel @Inject constructor(
             is PeopleIntent.MergeInto -> {
                 val source = mergeSource.value ?: return
                 mergeSource.value = null
-                if (source.id != intent.target.id) viewModelScope.launch {
-                    mergePersons(
-                        source.id,
-                        intent.target.id
-                    )
+                if (source.id != intent.target.id) {
+                    launchSafely("합치지 못했어요. 다시 해 주세요.") {
+                        mergePersons(
+                            source.id,
+                            intent.target.id
+                        )
+                    }
                 }
             }
 
-            is PeopleIntent.ToggleFaces ->
-                if (intent.enabled) viewModelScope.launch { setFaceFeature(true) } else confirmDisable.value =
-                    true
+            is PeopleIntent.ToggleFaces -> {
+                if (intent.enabled) {
+                    launchSafely(TOGGLE_FAILED) {
+                        setFaceFeature(true)
+                    }
+                } else {
+                    confirmDisable.value = true
+                }
+            }
 
             PeopleIntent.ConfirmDisable -> {
                 confirmDisable.value = false
-                viewModelScope.launch { setFaceFeature(false) }
+                launchSafely(TOGGLE_FAILED) { setFaceFeature(false) }
             }
 
             PeopleIntent.CancelDisable -> confirmDisable.value = false
+            PeopleIntent.NoticeShown -> notice.value = null
         }
+    }
+
+    /** DB 오류 등으로 실패해도 앱이 죽지 않게: 취소는 그대로 넘기고, 그 밖의 예외는 로그 + 안내로 바꾼다. */
+    private fun launchSafely(failMessage: String, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, failMessage, e)
+                notice.value = failMessage
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "People"
+        const val TOGGLE_FAILED = "인물 기능을 바꾸지 못했어요. 다시 해 주세요."
     }
 }
