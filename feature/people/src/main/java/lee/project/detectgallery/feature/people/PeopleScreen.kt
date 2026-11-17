@@ -1,5 +1,12 @@
 package lee.project.detectgallery.feature.people
 
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -97,7 +104,12 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
             return@Column
         }
         // 인물이 있어도 얼굴만 남은 경우(모델을 나중에 넣었거나 기능을 다시 켬): 위 현황 줄 숫자는 장면 기준이라 여기서 알린다
-        (state.faceState as? FaceAnalysisState.FacesCatchingUp)?.let { FaceProgressRow(it.done, it.total) }
+        (state.faceState as? FaceAnalysisState.FacesCatchingUp)?.let {
+            FaceProgressRow(
+                it.done,
+                it.total
+            )
+        }
 
         LazyVerticalGrid(GridCells.Adaptive(96.dp), contentPadding = PaddingValues(12.dp)) {
             items(state.people, key = { it.id }) { p ->
@@ -162,11 +174,11 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
             title = { Text("인물 기능을 끌까요?") },
             text = { Text("저장된 얼굴 데이터와 붙인 이름이 모두 지워져요. 다시 켜면 사진을 처음부터 다시 분석해요.") },
             confirmButton = {
-                TextButton(onClick = { vm.onIntent(PeopleIntent.ConfirmDisable) }) {
-                    Text(
-                        "끄고 지우기"
-                    )
-                }
+                // 되돌릴 수 없는 삭제라 빨간 글자로 구분한다. 다른 대화상자의 확인 버튼은 그대로 파랑
+                TextButton(
+                    onClick = { vm.onIntent(PeopleIntent.ConfirmDisable) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("끄고 지우기") }
             },
             dismissButton = {
                 TextButton(onClick = { vm.onIntent(PeopleIntent.CancelDisable) }) {
@@ -179,30 +191,38 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
     }
 }
 
+/**
+ * 이름 붙이기·바꾸기. 열면 입력칸에 바로 커서가 가고 기존 이름은 전체 선택돼 바로 덮어쓸 수 있다.
+ * 키보드의 완료 키로도 저장한다. 빈 이름은 막고, 띄어쓰기는 저장할 때 NamePersonUseCase 가 뺀다.
+ */
 @Composable
 internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var text by remember { mutableStateOf(initial) }
+    var field by remember { mutableStateOf(TextFieldValue(initial, selection = TextRange(0, initial.length))) }
     var error by remember { mutableStateOf(false) }
+    val focus = remember { FocusRequester() }
+    val submit: () -> Unit = {
+        if (field.text.isBlank()) error = true else onConfirm(field.text.trim())
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("이름 붙이기") },
+        title = { Text(if (initial.isEmpty()) "이름 붙이기" else "이름 바꾸기") },
         text = {
+            // 대화상자 창 안에서 입력칸이 붙은 뒤 포커스를 준다 (대화상자 밖에서 부르면 아직 붙지 않았을 수 있다)
+            LaunchedEffect(Unit) { focus.requestFocus() }
             OutlinedTextField(
-                value = text,
-                onValueChange = { text = it; error = false },
+                value = field,
+                // TextFieldValue 는 커서·선택만 바뀌어도 불린다 → 글자가 바뀔 때만 오류를 지운다
+                onValueChange = { if (it.text != field.text) error = false; field = it },
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 singleLine = true,
                 isError = error,
-                supportingText = { Text(if (error) "이름을 입력하세요" else "띄어쓰기 없이 저장돼요. 검색할 때 이 이름으로 찾아요.") },
                 placeholder = { Text("엄마") },
+                supportingText = { Text(if (error) "이름을 입력하세요" else "띄어쓰기 없이 저장돼요. 검색할 때 이 이름으로 찾아요.") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { submit() }),
             )
         },
-        confirmButton = {
-            TextButton(onClick = {
-                if (text.isBlank()) error = true else onConfirm(
-                    text.trim()
-                )
-            }) { Text("저장") }
-        },
+        confirmButton = { TextButton(onClick = submit) { Text("저장") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
     )
 }
@@ -216,6 +236,7 @@ private fun faceStatusText(s: FaceAnalysisState?): String = when (s) {
     is FaceAnalysisState.Analyzing ->
         if (s.total == null) "사진을 확인하고 있어요."
         else "사진을 분석하고 있어요 (${s.done} / ${s.total}장). 얼굴이 나온 사진이 분석되면 여기에 묶여요."
+
     FaceAnalysisState.NoFacesFound -> "사진에서 얼굴을 찾지 못했어요."
     FaceAnalysisState.Ready, null -> "사진 분석이 끝나면 얼굴별로 묶어서 보여드려요."
 }
@@ -223,7 +244,9 @@ private fun faceStatusText(s: FaceAnalysisState?): String = when (s) {
 /** 인물 목록 위 진행 줄. 얼굴만 따로 분석 중일 때만 보인다. */
 @Composable
 private fun FaceProgressRow(done: Int, total: Int) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Column(Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 4.dp)) {
         Text(
             "얼굴 분석 $done / ${total}장",
             style = MaterialTheme.typography.labelMedium,
@@ -231,7 +254,9 @@ private fun FaceProgressRow(done: Int, total: Int) {
         )
         LinearProgressIndicator(
             progress = { if (total == 0) 0f else done / total.toFloat() },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
         )
     }
 }

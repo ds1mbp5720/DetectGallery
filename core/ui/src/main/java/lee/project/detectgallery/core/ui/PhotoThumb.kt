@@ -20,7 +20,10 @@ import kotlin.math.max
  * 좌표는 0..1 정규화 값. :core:ui 가 domain 에 의존하지 않도록 Box 대신 숫자 4개를 받는다.
  */
 class FaceCropTransformation(
-    private val left: Float, private val top: Float, private val right: Float, private val bottom: Float,
+    private val left: Float,
+    private val top: Float,
+    private val right: Float,
+    private val bottom: Float,
     private val padding: Float = 0.25f,
 ) : Transformation {
     override val cacheKey = "face-crop-$left-$top-$right-$bottom-$padding"
@@ -37,7 +40,11 @@ class FaceCropTransformation(
 }
 
 @Composable
-fun FaceThumb(uri: Uri, left: Float, top: Float, right: Float, bottom: Float, modifier: Modifier = Modifier) {
+fun FaceThumb(
+    uri: Uri, left: Float, top: Float, right: Float, bottom: Float,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = "얼굴",
+) {
     val context = LocalContext.current
     val request = remember(uri, left, top, right, bottom) {
         ImageRequest.Builder(context)
@@ -46,5 +53,10 @@ fun FaceThumb(uri: Uri, left: Float, top: Float, right: Float, bottom: Float, mo
             .transformations(FaceCropTransformation(left, top, right, bottom))
             .build()
     }
-    AsyncImage(model = request, contentDescription = "얼굴", contentScale = ContentScale.Crop, modifier = modifier.clip(CircleShape))
+    AsyncImage(
+        model = request,
+        contentDescription = contentDescription,
+        contentScale = ContentScale.Crop,
+        modifier = modifier.clip(CircleShape)
+    )
 }

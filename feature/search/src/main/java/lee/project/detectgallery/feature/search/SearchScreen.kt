@@ -1,28 +1,51 @@
 package lee.project.detectgallery.feature.search
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
-import  lee.project.detectgallery.core.ui.components.ChipRow
-import  lee.project.detectgallery.core.ui.components.SegmentedTabs
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
-import android.net.Uri
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -32,6 +55,8 @@ import lee.project.detectgallery.core.domain.model.IndexProgress
 import lee.project.detectgallery.core.domain.model.Sensitivity
 import lee.project.detectgallery.core.ui.FaceThumb
 import lee.project.detectgallery.core.ui.PhotoGrid
+import lee.project.detectgallery.core.ui.components.ChipRow
+import lee.project.detectgallery.core.ui.components.SegmentedTabs
 
 private val QUICK = listOf("음식", "바다", "하늘", "웃는", "단체", "셀카", "흔들린")
 private val IMAGE_MODES = listOf(
@@ -211,24 +236,30 @@ private fun SearchGuide(progress: IndexProgress?, modifier: Modifier = Modifier)
 
 /** 쿼리 사진에 얼굴이 여럿일 때 찾을 사람을 고른다. 왼쪽부터 (사진 속 위치 순). */
 @Composable
-private fun FaceChoiceDialog(
-    uri: Uri,
-    faces: List<DetectedFace>,
-    onPick: (DetectedFace) -> Unit,
-    onDismiss: () -> Unit
-) {
+private fun FaceChoiceDialog(uri: Uri, faces: List<DetectedFace>, onPick: (DetectedFace) -> Unit, onDismiss: () -> Unit) {
+    val sorted = remember(faces) { faces.sortedBy { it.box.left } }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("누구를 찾을까요?") },
         text = {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(faces.sortedBy { it.box.left }) { f ->
-                    FaceThumb(
-                        uri, f.box.left, f.box.top, f.box.right, f.box.bottom,
-                        Modifier
-                            .size(72.dp)
-                            .clickable { onPick(f) },
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    "사진에 얼굴이 ${sorted.size}개 있어요. 찾을 사람을 누르세요.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    itemsIndexed(sorted) { i, f ->
+                        FaceThumb(
+                            uri, f.box.left, f.box.top, f.box.right, f.box.bottom,
+                            // 둥글게 자른 뒤 누르게 해 누름 표시(물결)도 원 안에만 보인다
+                            Modifier
+                                .size(72.dp)
+                                .clip(CircleShape)
+                                .clickable(onClickLabel = "이 사람으로 찾기", role = Role.Button) { onPick(f) },
+                            contentDescription = "얼굴 ${i + 1}/${sorted.size}, 왼쪽부터",
+                        )
+                    }
                 }
             }
         },

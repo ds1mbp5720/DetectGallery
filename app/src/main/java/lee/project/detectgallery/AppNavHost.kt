@@ -24,7 +24,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import lee.project.detectgallery.feature.live.LiveScreen
 import lee.project.detectgallery.feature.people.PeopleScreen
-import lee.project.detectgallery.feature.people.PersonDetailScreen
+import lee.project.detectgallery.feature.people.detail.PersonDetailScreen
 import lee.project.detectgallery.feature.search.SearchScreen
 import lee.project.detectgallery.core.ui.components.BottomItem
 import lee.project.detectgallery.core.ui.components.CompactBottomBar

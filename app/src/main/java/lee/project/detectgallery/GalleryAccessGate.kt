@@ -18,11 +18,33 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import lee.project.detectgallery.core.data.work.IndexScheduler
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 
 enum class GalleryAccess { FULL, PARTIAL, NONE }
 
 fun galleryAccess(context: Context): GalleryAccess {
-    fun granted(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+    fun granted(p: String) =
+        ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
     return when {
         Build.VERSION.SDK_INT >= 33 && granted(Manifest.permission.READ_MEDIA_IMAGES) -> GalleryAccess.FULL
         Build.VERSION.SDK_INT >= 34 && granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) -> GalleryAccess.PARTIAL
@@ -32,7 +54,11 @@ fun galleryAccess(context: Context): GalleryAccess {
 }
 
 private fun galleryPermissions(): Array<String> = when {
-    Build.VERSION.SDK_INT >= 34 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+    Build.VERSION.SDK_INT >= 34 -> arrayOf(
+        Manifest.permission.READ_MEDIA_IMAGES,
+        Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+    )
+
     Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
     else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 }
@@ -46,7 +72,12 @@ private fun scheduleIfAllowed(context: Context, afterCurrent: Boolean) {
 @Composable
 fun rememberGalleryRequest(): () -> Unit {
     val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(RequestMultiplePermissions()) { scheduleIfAllowed(context, afterCurrent = true) }
+    val launcher = rememberLauncherForActivityResult(RequestMultiplePermissions()) {
+        scheduleIfAllowed(
+            context,
+            afterCurrent = true
+        )
+    }
     return remember(launcher) { { launcher.launch(galleryPermissions()) } }
 }
 
@@ -54,8 +85,11 @@ fun rememberGalleryRequest(): () -> Unit {
 fun GalleryAccessGate(content: @Composable (GalleryAccess) -> Unit) {
     val context = LocalContext.current
     var access by remember { mutableStateOf(galleryAccess(context)) }
+    // 거부했는지만 기억한다. 시스템이 더 묻지 않는 상태는 가리지 않는다(AccessIntro 주석)
+    var denied by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(RequestMultiplePermissions()) {
         access = galleryAccess(context)
+        denied = access == GalleryAccess.NONE
         scheduleIfAllowed(context, afterCurrent = true)
     }
 
@@ -70,25 +104,107 @@ fun GalleryAccessGate(content: @Composable (GalleryAccess) -> Unit) {
     }
 
     if (access == GalleryAccess.NONE) {
-        Column(
-            Modifier.fillMaxSize().padding(32.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("갤러리 사진에 접근하도록 허용해 주세요", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            Text("사진은 이 기기 안에서만 분석해요. 어디로도 보내지 않아요.", style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "처음 한 번은 사진을 분석하는 데 시간이 걸려요. 그동안에도 분석된 사진부터 쓸 수 있어요.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = { launcher.launch(galleryPermissions()) }) { Text("사진 접근 허용") }
-        }
+        AccessIntro(
+            denied = denied,
+            onAllow = { launcher.launch(galleryPermissions()) },
+            onOpenSettings = { openAppSettings(context) },
+        )
     } else {
         content(access)
     }
 }
-// "다시 묻지 않음"으로 거부하면 launch() 가 아무것도 띄우지 않는다.
-// 그때를 위해 Settings.ACTION_APPLICATION_DETAILS_SETTINGS 로 가는 "설정 열기" 버튼을 함께 두는 것을 권장한다.
+/**
+ * 사진 권한이 없을 때(첫 실행 포함) 보이는 소개·권한 화면.
+ * 탭 화면의 Scaffold 밖이라 바탕색·시스템 막대 여백을 여기서 직접 챙긴다. 큰 글자에서도 버튼까지 닿게 스크롤된다.
+ * 거부한 뒤에는 "사진 접근 허용" 과 "설정에서 허용" 을 함께 둔다. 시스템이 더 묻지 않는 상태(두 번 거부)를
+ * 앱에서 정확히 가릴 수 없어(첫 대화상자를 뒤로 가기로 닫아도 같은 값이 나온다) 두 길을 늘 열어 둔다.
+ */
+@Composable
+private fun AccessIntro(denied: Boolean, onAllow: () -> Unit, onOpenSettings: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(Modifier.fillMaxSize(), color = colors.background) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 32.dp),
+        ) {
+            Text("Detect Gallery", style = MaterialTheme.typography.titleSmall, color = colors.primary)
+            Text(
+                "갤러리 속 사진을\n바로 찾아 드려요",
+                style = MaterialTheme.typography.headlineSmall,
+                color = colors.onBackground,
+                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp).semantics { heading() },
+            )
+            Feature(Icons.Outlined.PhotoCamera, "카메라로 찾기", "비추고 박스를 누르면 같은 사람·비슷한 사진을 찾아요.")
+            Feature(Icons.Outlined.Search, "낱말로 찾기", "\"바다\", \"엄마\", \"작년 3월\" 처럼 입력해 찾아요.")
+            Feature(Icons.Outlined.People, "인물별로 모아 보기", "같은 사람의 얼굴을 묶고, 이름을 붙이면 이름으로 찾아요.")
+            Row(
+                Modifier
+                    .padding(top = 16.dp)
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(colors.surfaceVariant)
+                    .padding(14.dp)
+                    .semantics(mergeDescendants = true) {},
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Outlined.Lock, contentDescription = null, tint = colors.onSurfaceVariant)
+                Text(
+                    "사진은 이 기기 안에서만 분석해요. 어디로도 보내지 않아요.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+            Text(
+                "처음 한 번은 분석에 시간이 걸려요. 그동안에도 분석된 사진부터 쓸 수 있어요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp, bottom = 32.dp),
+            )
+            if (denied) {
+                // 거부 직후 나타나므로 TalkBack 이 바로 읽게 한다
+                Text(
+                    "사진 접근을 허용해야 시작할 수 있어요. 눌러도 다시 묻지 않으면 설정 → 권한에서 사진 접근을 허용해 주세요.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.error,
+                    modifier = Modifier.padding(bottom = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            Button(onClick = onAllow, modifier = Modifier.fillMaxWidth()) { Text("사진 접근 허용") }
+            if (denied) {
+                TextButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) { Text("설정에서 허용") }
+            }
+        }
+    }
+}
+
+/** 기능 한 줄: 파란 원 아이콘 + 제목 + 설명. TalkBack 은 한 줄을 한 번에 읽는다. */
+@Composable
+private fun Feature(icon: ImageVector, title: String, body: String) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp).semantics(mergeDescendants = true) {},
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).background(colors.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = colors.onPrimaryContainer)
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = colors.onBackground)
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+        }
+    }
+}
+
+private fun openAppSettings(context: Context) {
+    context.startActivity(
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+}
+// 실제 앱에서는 화면 문구를 strings.xml 로 옮긴다.

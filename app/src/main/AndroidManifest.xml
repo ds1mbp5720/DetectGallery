@@ -20,7 +20,7 @@
 
     <application
         android:name=".DetectGalleryApp"
-        android:label="Gallery Lens"
+        android:label="Detect_Gallery"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
