@@ -105,12 +105,15 @@ interface PersonDao {
         detachDangling()
     }
 
+    // center 는 ByteArray(BLOB) 로 받는다. FloatArray 로 받으면 Room 이 배열을 IN 목록처럼 "?,?,…" 로 펼쳐
+    // "near ?: syntax error" 가 난다(TypeConverter 는 쿼리 인자의 배열에는 쓰이지 않는다).
     @Query("UPDATE person SET center = :center, centerVersion = :version WHERE id = :id")
-    suspend fun updateCenter(id: Long, center: FloatArray, version: Int)
+    suspend fun updateCenter(id: Long, center: ByteArray, version: Int)
 
     @Transaction
     suspend fun updateCenters(centers: Map<Long, FloatArray>, version: Int) {
-        for ((id, c) in centers) updateCenter(id, c, version)
+        val conv = Converters()   // 저장 형식(리틀 엔디언 float)은 엔티티 열과 같은 변환기로 맞춘다
+        for ((id, c) in centers) updateCenter(id, conv.fromVector(c), version)
     }
 
     @Query("UPDATE person SET name = :name WHERE id = :id")
