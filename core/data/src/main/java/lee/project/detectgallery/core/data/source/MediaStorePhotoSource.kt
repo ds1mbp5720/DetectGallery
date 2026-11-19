@@ -22,10 +22,15 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.mapNotNull
+import lee.project.detectgallery.core.domain.model.Album
+import lee.project.detectgallery.core.domain.port.SettingsRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
 
 /** minSdk 30 전제 (GENERATION_MODIFIED 열). */
 class MediaStorePhotoSource @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val settings: SettingsRepository,   // 분석할 앨범 (비어 있으면 모든 앨범)
 ) : PhotoSource {
     private val resolver = context.contentResolver
 
@@ -42,7 +47,8 @@ class MediaStorePhotoSource @Inject constructor(
             MediaStore.MediaColumns.GENERATION_MODIFIED,
         )
         // null = 미디어 프로바이더 일시 이상. 빈 목록으로 바꾸면 색인 전체가 "삭제된 사진" 이 된다.
-        val cursor = resolver.query(collection, cols, null, null, null)
+        val (where, args) = albumFilter(settings.albumsNow())   // 고른 앨범 밖의 사진은 "사라진 사진" 이 되어 색인에서 지워진다
+        val cursor = resolver.query(collection, cols, where, args, null)
             ?: throw IllegalStateException("MediaStore 조회 실패")
         cursor.use { c ->
             buildList {
@@ -56,11 +62,20 @@ class MediaStorePhotoSource @Inject constructor(
     }
 
     /**
-     * 앱이 볼 수 있는 사진 수. refs() 와 같은 collection 을 세므로 부분 접근이면 고른 사진만 센다.
+     * 분석 대상 사진 수. refs() 와 같은 조건(collection·고른 앨범)으로 세므로 부분 접근이면 고른 사진만 센다.
      * 촬영·삭제·선택 변경 때 MediaStore 가 알려 주면 다시 센다. 조회가 실패(null)한 순간은 값을 내지 않는다.
+     * 고른 앨범이 바뀌면 그 범위로 바로 다시 센다(refs() 와 같은 조건).
      */
-    @OptIn(FlowPreview::class)
-    fun countFlow(): Flow<Int> = callbackFlow {
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    fun countFlow(): Flow<Int> = settings.albums
+        .flatMapLatest { ids ->
+            changes().debounce(500).mapNotNull { count(ids) }
+        }   // 여러 장을 한꺼번에 옮기면 알림이 연달아 온다
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
+
+    /** MediaStore 변경 알림. 구독하자마자 한 번 낸다. */
+    private fun changes(): Flow<Unit> = callbackFlow {
         val observer = object : ContentObserver(null) {          // Handler 없음 → 바인더 스레드에서 불린다
             override fun onChange(selfChange: Boolean) {
                 trySend(Unit)
@@ -70,14 +85,51 @@ class MediaStorePhotoSource @Inject constructor(
         trySend(Unit)                                            // 처음 한 번
         awaitClose { resolver.unregisterContentObserver(observer) }
     }
-        .debounce(500)                                           // 여러 장을 한꺼번에 옮기면 알림이 연달아 온다
-        .mapNotNull { count() }
-        .distinctUntilChanged()
-        .flowOn(Dispatchers.IO)
 
-    private fun count(): Int? =
-        resolver.query(collection, arrayOf(MediaStore.Images.Media._ID), null, null, null)
+    private fun count(albums: Set<Long>): Int? {
+        val (where, args) = albumFilter(albums)
+        return resolver.query(collection, arrayOf(MediaStore.Images.Media._ID), where, args, null)
             ?.use { it.count }
+    }
+
+    /** 고른 앨범만 거르는 조건. 비어 있으면 조건 없음(모든 앨범). */
+    private fun albumFilter(ids: Set<Long>): Pair<String?, Array<String>?> =
+        if (ids.isEmpty()) null to null
+        else "${MediaStore.Images.Media.BUCKET_ID} IN (${ids.joinToString(",") { "?" }})" to ids.map(
+            Long::toString
+        ).toTypedArray()
+
+    /** 앨범 목록(고르는 화면용). 앨범 선택과 무관하게 볼 수 있는 사진 전부를 센다. 최신 사진 순이라 처음 본 사진이 대표 사진. */
+    override suspend fun albums(): List<Album> = withContext(Dispatchers.IO) {
+        val cols = arrayOf(
+            MediaStore.Images.Media.BUCKET_ID,
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
+            MediaStore.Images.Media._ID
+        )
+        val cursor = resolver.query(
+            collection,
+            cols,
+            null,
+            null,
+            "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        )
+            ?: throw IllegalStateException("MediaStore 조회 실패")
+        cursor.use { c ->
+            val byId = LinkedHashMap<Long, Album>()
+            while (c.moveToNext()) {
+                if (c.isNull(0)) continue   // 폴더 없는 사진(드묾): BUCKET_ID IN (…) 로 거를 수 없어 목록에서 뺀다
+                val id = c.getLong(0)
+                val a = byId[id]
+                byId[id] = a?.copy(count = a.count + 1) ?: Album(
+                    id,
+                    c.getString(1) ?: "이름 없는 앨범",
+                    1,
+                    c.getLong(2)
+                )
+            }
+            byId.values.sortedByDescending { it.count }
+        }
+    }
 
     /**
      * 원본을 maxSide 로 줄여 디코딩한다. loadThumbnail 은 쓰지 않는다:

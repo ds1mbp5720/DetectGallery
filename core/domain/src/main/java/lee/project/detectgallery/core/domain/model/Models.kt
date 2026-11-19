@@ -26,6 +26,9 @@ data class Box(val left: Float, val top: Float, val right: Float, val bottom: Fl
 /** generation = MediaStore GENERATION_MODIFIED. 사진이 바뀌면 커진다. */
 data class PhotoRef(val mediaId: Long, val dateTaken: Long, val generation: Long)
 
+/** 기기 앨범(MediaStore BUCKET). "분석할 앨범 고르기" 목록 한 줄. coverMediaId = 그 앨범의 가장 최근 사진. */
+data class Album(val id: Long, val name: String, val count: Int, val coverMediaId: Long)
+
 /** 색인에 저장된 사진별 상태. version 0 = 분석 실패(재시도 대상). */
 /**
  * facesDone = 이 사진의 얼굴 분석을 마쳤는가. 인물 기능이 꺼져 있었거나 얼굴 모델이 없을 때 분석한 사진은 false.

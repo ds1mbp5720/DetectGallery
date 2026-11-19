@@ -10,7 +10,7 @@ data class Sensitivity(val person: Float = 0f, val scene: Float = 0f) {
 }
 
 /**
- * 상단 현황 줄의 원본 값. galleryCount = 앱이 볼 수 있는 사진 수, analyzedCount = 지금 검색되는 사진 수.
+ * 상단 현황 줄의 원본 값. galleryCount = 분석 대상 사진 수(볼 수 있는 사진 중 고른 앨범), analyzedCount = 지금 검색되는 사진 수.
  * 정리 전에는 analyzedCount 가 더 클 수 있다 (표시 쪽에서 자른다).
  */
 data class LibraryStatus(

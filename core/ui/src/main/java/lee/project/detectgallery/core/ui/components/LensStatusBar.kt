@@ -25,8 +25,15 @@ internal data class StatusText(val main: String, val badge: String, val ratio: F
 /**
  * 현황 줄 문구. galleryCount == null 은 아직 첫 값이 오지 않은 상태.
  * partial = "선택한 사진만 허용". 그때의 사진 수는 갤러리 전체가 아니라 고른 사진 수라 "고른 사진" 으로 쓴다.
+ * albums = 고른 앨범만 분석. 사진 수가 그 앨범들의 합이라 "고른 앨범" 으로 쓴다(둘 다면 "고른 사진").
  */
-internal fun statusText(galleryCount: Int?, analyzedCount: Int, indexing: Boolean, partial: Boolean = false): StatusText {
+internal fun statusText(
+    galleryCount: Int?,
+    analyzedCount: Int,
+    indexing: Boolean,
+    partial: Boolean = false,
+    albums: Boolean = false,
+): StatusText {
     if (galleryCount == null) return StatusText("갤러리 확인 중", "", 0f)
     val analyzed = analyzedCount.coerceIn(0, galleryCount)   // 지운 사진이 정리되기 전엔 분석 수가 더 클 수 있다
     val pending = galleryCount - analyzed
@@ -37,7 +44,11 @@ internal fun statusText(galleryCount: Int?, analyzedCount: Int, indexing: Boolea
         else -> "대기 ${fmt(pending)}장"                       // 다음 실행 대기·분석 실패 포함
     }
     val ratio = if (galleryCount == 0) 0f else analyzed / galleryCount.toFloat()
-    val noun = if (partial) "고른 사진" else "사진"
+    val noun = when {
+        partial -> "고른 사진"
+        albums -> "고른 앨범"
+        else -> "사진"
+    }
     return StatusText("$noun ${fmt(galleryCount)}장 · 분석 ${fmt(analyzed)}장", badge, ratio)
 }
 
@@ -46,7 +57,7 @@ private fun fmt(n: Int): String = NumberFormat.getIntegerInstance(Locale.KOREA).
 /**
  * 모든 탭 위에 항상 보이는 현황 줄. 카드 48dp + 위아래 2dp = 52dp 고정 (부분 접근이어도 같다).
  * 진행 막대는 카드 아래 가장자리에 3dp 로 붙여 줄을 늘리지 않는다.
- * partial = "선택한 사진만 허용" 상태: 카드 전체가 버튼이 되어 사진 범위 메뉴(더 고르기·전체 허용)를 연다
+ * 카드 전체가 버튼이 되어 사진 범위 메뉴(분석할 앨범 고르기, 부분 접근이면 더 고르기·전체 허용)를 연다
  * (따로 버튼을 두면 최소 터치 영역 48dp 때문에 줄이 커진다).
  */
 @Composable
@@ -55,10 +66,11 @@ fun LensStatusBar(
     analyzedCount: Int,
     indexing: Boolean,
     partial: Boolean,
-    onPartialClick: () -> Unit,
+    albumFiltered: Boolean,
+    onScopeClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val t = statusText(galleryCount, analyzedCount, indexing, partial)
+    val t = statusText(galleryCount, analyzedCount, indexing, partial, albumFiltered)
     val colors = MaterialTheme.colorScheme
     Box(
         modifier
@@ -67,20 +79,23 @@ fun LensStatusBar(
             .height(48.dp)
             .clip(MaterialTheme.shapes.medium)
             .background(colors.surfaceVariant)
-            .then(
+            .clickable(onClickLabel = "사진 범위 바꾸기", role = Role.Button, onClick = onScopeClick)
+            .semantics {   // TalkBack: 문구 + 상태 + 동작
                 if (partial) {
-                    Modifier
-                        .clickable(onClickLabel = "사진 더 고르기", role = Role.Button, onClick = onPartialClick)
-                        .semantics { stateDescription = "선택한 사진만 허용" }   // TalkBack: 문구 + 상태 + 동작
-                } else Modifier,
-            ),
+                    stateDescription = "선택한 사진만 허용"
+                } else if (albumFiltered) {
+                    stateDescription = "고른 앨범만 분석"
+                }
+            },
     ) {
         Row(
-            Modifier.fillMaxSize().padding(start = 14.dp, end = 12.dp, bottom = 3.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(start = 14.dp, end = 12.dp, bottom = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                t.main,   // 부분 접근이면 "고른 사진 N장" (긴 접두어를 붙이면 360dp 폭에서 숫자가 잘린다). 넘치면 끝이 … 로 줄어든다
+                t.main,   // 부분 접근이면 "고른 사진 N장", 고른 앨범이면 "고른 앨범 N장" (긴 접두어를 붙이면 360dp 폭에서 숫자가 잘린다). 넘치면 끝이 … 로 줄어든다
                 Modifier.weight(1f),
                 style = MaterialTheme.typography.labelMedium,
                 color = colors.onSurface,
@@ -88,19 +103,22 @@ fun LensStatusBar(
                 overflow = TextOverflow.Ellipsis,
             )
             if (t.badge.isNotEmpty()) StatusBadge(t.badge, highlighted = indexing)
-            if (partial) {
-                Text(
-                    "사진 범위 ›",
-                    Modifier.padding(start = 8.dp).clearAndSetSemantics {},   // "›" 를 기호 이름으로 읽지 않게. 동작은 카드의 onClickLabel 이 알린다
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.primary,
-                    maxLines = 1,
-                )
-            }
+            Text(
+                "범위 ›",   // 모든 상태에서 보인다. 짧게 둬 숫자 자리를 덜 뺏는다
+                Modifier
+                    .padding(start = 8.dp)
+                    .clearAndSetSemantics {},   // "›" 를 기호 이름으로 읽지 않게. 동작은 카드의 onClickLabel 이 알린다
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.primary,
+                maxLines = 1,
+            )
         }
         LinearProgressIndicator(
             progress = { t.ratio },
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),   // 카드 모서리 clip 이 끝을 둥글게 한다
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(3.dp),   // 카드 모서리 clip 이 끝을 둥글게 한다
             color = colors.primary,
             trackColor = colors.outlineVariant,
             gapSize = 0.dp,

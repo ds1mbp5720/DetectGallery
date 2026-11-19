@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** 값 두 개라 SharedPreferences 로 충분하다. 메모리 값을 단일 출처로 두고 쓸 때만 디스크에 반영한다. */
+/** 값 몇 개라 SharedPreferences 로 충분하다. 메모리 값을 단일 출처로 두고 쓸 때만 디스크에 반영한다. */
 @Singleton
 class PrefsSettingsRepository @Inject constructor(
     @ApplicationContext context: Context,
@@ -39,9 +39,22 @@ class PrefsSettingsRepository @Inject constructor(
         prefs.edit().putBoolean(KEY_FACES, enabled).commit()
     }
 
+    private val albumIds = MutableStateFlow(
+        prefs.getStringSet(KEY_ALBUMS, null).orEmpty().mapNotNull { it.toLongOrNull() }.toSet(),
+    )
+    override val albums: Flow<Set<Long>> = albumIds.asStateFlow()
+    override fun albumsNow() = albumIds.value
+
+    /** 프로세스가 종료돼도 범위가 남게 commit (동기 저장) 한다. 같은 프로세스의 색인은 메모리 값(albumIds)을 바로 본다 */
+    override suspend fun setAlbums(ids: Set<Long>) {
+        albumIds.value = ids
+        prefs.edit().putStringSet(KEY_ALBUMS, ids.mapTo(HashSet()) { it.toString() }).commit()
+    }
+
     private companion object {
         const val KEY_PERSON = "sensitivity.person"
         const val KEY_SCENE = "sensitivity.scene"
         const val KEY_FACES = "faces.enabled"
+        const val KEY_ALBUMS = "albums"
     }
 }

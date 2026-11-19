@@ -57,6 +57,7 @@ class IndexNewPhotosUseCase @Inject constructor(
 
     /** 한 번 훑기. 분석한 사진 수를 돌려준다. */
     private suspend fun indexOnce(attempted: MutableSet<Long>, onProgress: suspend (Int, Int) -> Unit): Int {
+        val scope = settings.albumsNow()        // 이 판을 시작할 때의 앨범 범위
         val refs = source.refs()                 // 조회 실패면 예외 → Worker 가 재시도
         val states = index.indexStates()
         val present = refs.mapTo(HashSet()) { it.mediaId }
@@ -70,6 +71,7 @@ class IndexNewPhotosUseCase @Inject constructor(
         // 대가는 전체 허용으로 되돌릴 때의 재색인이다. 이름 붙은 인물은 person 테이블에 중심과 함께 남으므로
         // (deleteOrphans 는 이름 없는 인물만 지운다) 재색인된 얼굴이 가장 가까운 인물로 다시 붙는다.
         // 단 그 사이 INDEX_VERSION 이 바뀌었으면 옛 중심이라 자동으로 붙지 않는다 → 인물 목록에서 합친다.
+        // 분석할 앨범에서 뺀 앨범의 사진도 refs() 에 없으므로 같은 이유·같은 경로로 여기서 지운다.
         if (present.isNotEmpty()) index.delete(states.keys - present)
 
         val targets = refs
@@ -85,6 +87,8 @@ class IndexNewPhotosUseCase @Inject constructor(
         var done = 0
         if (targets.isNotEmpty()) onProgress(0, targets.size)   // 시작 즉시 "분석 중" (첫 배치까지 기다리지 않게)
         for (chunk in targets.chunked(BATCH)) {
+            // 앨범 범위가 바뀌면 남은 옛 범위 사진은 그만 분석한다. 바꾼 쪽(SetAlbumsUseCase)이 붙여 둔 다음 실행이 새 범위로 다시 훑는다
+            if (settings.albumsNow() != scope) break
             val analyzed = chunk.map { analyze(it) }
             // 저장 앞뒤로 표시: 앞 = 저장 커밋 직후 프로세스가 죽어도 표시가 남는다(apply 는 비동기).
             // 뒤 = 그사이 화면의 재계산(합치기 등)이 표시를 지웠어도, 이 배치가 바꾼 연결이 재계산된다.

@@ -83,3 +83,15 @@ internal suspend fun PersonRepository.recomputeCentersAfterEdit() {
         // 다음 색인에서 다시 계산된다
     }
 }
+
+/** 분석할 앨범 바꾸기. 빠진 앨범의 사진은 다음 색인이 "사라진 사진" 으로 지우고(이름 붙은 인물은 남는다), 새로 들어온 앨범은 분석한다. */
+class SetAlbumsUseCase @Inject constructor(
+    private val settings: SettingsRepository,
+    private val trigger: IndexTrigger,
+) {
+    suspend operator fun invoke(ids: Set<Long>) {
+        if (ids == settings.albumsNow()) return
+        settings.setAlbums(ids)       // 먼저 저장해야 다음 색인의 refs() 가 새 범위로 읽는다
+        trigger.requestIndex()        // 도는 색인이 있으면 그 뒤에 붙는다
+    }
+}
