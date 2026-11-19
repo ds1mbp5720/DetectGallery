@@ -8,14 +8,18 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-/** 인물이 없는 얼굴을 가장 가까운 인물에 붙이고, 없으면 새 인물을 만든다. 결과는 한 번에 저장. */
+/**
+ * 인물이 없는 얼굴을 가장 가까운 인물에 붙이고, 없으면 새 인물을 만든다. 결과는 한 번에 저장.
+ * createNew = false 면 맞는 인물이 없는 얼굴은 미배정으로 둔다. 모델 교체 재색인 중에는 아직 옛 중심인 인물(이름 포함)이
+ * 후보에서 빠져 있어, 새로 만들면 같은 사람이 이름 인물과 새 인물로 갈린다. 재색인이 끝나면 다시 배정된다.
+ */
 class AssignPersonsUseCase @Inject constructor(private val persons: PersonRepository) {
-    suspend operator fun invoke() {
+    suspend operator fun invoke(createNew: Boolean = true) {
         val centers = persons.centers().toMutableList()
         val assignments = mutableListOf<Pair<Long, Long>>()
         for (face in persons.unassignedFaces()) {
             val personId = nearest(face.vector, centers, Thresholds.PERSON)
-                ?: persons.create(face.vector).also { centers += PersonCenter(it, face.vector) }
+                ?: if (createNew) persons.create(face.vector).also { centers += PersonCenter(it, face.vector) } else continue
             assignments += face.id to personId
         }
         // 한 트랜잭션으로 저장 (1만 개를 개별로 하면 수십 초). 비어 있어도 부른다:

@@ -52,12 +52,16 @@ interface PhotoIndexDao {
     /** 내용이 그대로인 사진의 일시 실패: 기존 장면·얼굴·라벨은 두고 버전만 0 으로 → 다음 실행에서 재시도. */
     @Query("UPDATE photo SET indexVersion = 0 WHERE mediaId IN (:ids)") suspend fun markFailed(ids: List<Long>)
     /** 현재 버전 모델이 만든 벡터만. 모델 교체 중 남은 옛 벡터는 차원이 같아도 다른 공간이라 섞으면 안 된다. */
+    // @Transaction: 결과가 커서 커서 창(약 2MB)을 넘으면 Room 이 여러 번 나눠 읽는다. 그 사이 색인 저장이 끼면
+    // 저장 전·후가 섞인 목록이 캐시에 남는다 (장면 1만 장 ≈ 40MB) → 한 트랜잭션으로 읽는다. faces 도 같다.
+    @Transaction
     @Query("""
         SELECT s.mediaId, s.vector FROM scene_embedding s JOIN photo p ON p.mediaId = s.mediaId
         WHERE p.vectorVersion = :version
     """)
     suspend fun scenes(version: Int): List<VectorRow>
 
+    @Transaction
     @Query("""
         SELECT f.mediaId, f.vector FROM face f JOIN photo p ON p.mediaId = f.mediaId
         WHERE f.excluded = 0 AND p.vectorVersion = :version

@@ -12,6 +12,7 @@ import lee.project.detectgallery.core.domain.port.SettingsRepository
 import lee.project.detectgallery.core.domain.port.VisionEncoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.yield
+import lee.project.detectgallery.core.domain.model.IndexedState
 import javax.inject.Inject
 
 /**
@@ -40,10 +41,12 @@ class IndexNewPhotosUseCase @Inject constructor(
             if (n == 0) break
         }
         // 재색인·모델 교체 뒤 중심을 새 벡터 기준으로. 이번에 처리한 게 없어도, 지난 실행이 재계산 전에 끊겼으면
-        // 낡음 표시가 남아 있어 여기서 계산된다. 배정보다 먼저: 모델 교체 중 옛 중심이라 건너뛴 인물이 여기서 새 중심을 얻는다.
+        // 낡음 표시가 남아 있어 여기서 계산된다. 배정보다 먼저: 재분석된 얼굴을 이어받은 옛 버전 인물이 여기서 새 버전 중심을 얻어
+        // 배정 후보로 돌아온다. 그래야 이어받지 못한 그 사람의 얼굴이 새 인물이 아니라 이 인물에 붙는다.
         persons.recomputeCenters(force = processed > 0)
-        // 마지막에 한 번 더: 색인 도중 합치기로 끊긴 얼굴이 미배정으로 돌아왔으면 여기서 다시 배정된다
-        assignPersons()
+        // 마지막에 한 번 더: 색인 도중 합치기로 끊긴 얼굴이 미배정으로 돌아왔으면 여기서 다시 배정된다.
+        // 재색인이 아직 남았으면(실패 재시도 등) 새 인물은 만들지 않는다 (isMigrating)
+        assignPersons(createNew = !isMigrating(index.indexStates()))
         persons.recomputeCenters(force = false)   // 방금 새 인물이 생겼으면(낡음 표시) 첫 얼굴 중심을 평균으로
         persons.deleteOrphans()
         // 인물 기능이 꺼져 있으면 실행 끝마다 얼굴 데이터를 다시 지운다 (지워져 있으면 아무 일도 없다).
@@ -55,12 +58,24 @@ class IndexNewPhotosUseCase @Inject constructor(
     /** 얼굴을 분석할 수 있고, 사용자가 켜 둔 상태인가. */
     private fun wantFaces() = vision.facesAvailable && settings.facesEnabledNow()
 
+    /**
+     * 모델 교체(INDEX_VERSION 올림) 재색인이 남았는가. 실패(버전 0)는 빼고 본다:
+     * 계속 실패하는 사진 하나 때문에 새 인물이 영영 안 생기면 안 된다.
+     */
+    private fun isMigrating(states: Map<Long, IndexedState>) =
+        states.values.any { it.version in 1 until INDEX_VERSION }
+
+
     /** 한 번 훑기. 분석한 사진 수를 돌려준다. */
-    private suspend fun indexOnce(attempted: MutableSet<Long>, onProgress: suspend (Int, Int) -> Unit): Int {
+    private suspend fun indexOnce(
+        attempted: MutableSet<Long>,
+        onProgress: suspend (Int, Int) -> Unit
+    ): Int {
         val scope = settings.albumsNow()        // 이 판을 시작할 때의 앨범 범위
         val refs = source.refs()                 // 조회 실패면 예외 → Worker 가 재시도
         val states = index.indexStates()
         val present = refs.mapTo(HashSet()) { it.mediaId }
+        val migrating = isMigrating(states)    // 이 판을 시작할 때 기준. 판 도중에 끝나도 새 인물은 다음 판·실행 끝에서 만든다
 
         // ponytail: 갤러리가 텅 비어 보이면 지우지 않는다. 진짜로 전부 지웠을 수도 있지만
         // 조회 이상일 가능성이 더 크고, 잘못 지우면 수십 분 재색인이다. 실제 전체 삭제는 다음 사진이 생길 때 정리된다.
@@ -97,14 +112,17 @@ class IndexNewPhotosUseCase @Inject constructor(
             index.save(
                 if (settings.facesEnabledNow()) analyzed
                 else analyzed.map { a ->
-                    a.copy(faces = emptyList(), facesDone = false, labels = a.labels.filterNot { it.name in StateTag.FACE_TAGS })
+                    a.copy(
+                        faces = emptyList(),
+                        facesDone = false,
+                        labels = a.labels.filterNot { it.name in StateTag.FACE_TAGS })
                 },
                 INDEX_VERSION,
             )
             persons.markCentersDirty()
             // 반대로 분석 중에 켜졌으면: 얼굴 없이 분석한 사진은 facesDone = false 로 저장돼 다음 실행에서 얼굴만 채워진다
             chunk.mapTo(attempted) { it.mediaId }
-            assignPersons()                        // 배치마다: 중간에 멈춰도 인물이 생긴다
+            assignPersons(createNew = !migrating)  // 배치마다: 중간에 멈춰도 인물이 생긴다 (재색인 중이면 기존 인물에만)
             done += chunk.size
             onProgress(done, targets.size)
             yield()
@@ -115,7 +133,10 @@ class IndexNewPhotosUseCase @Inject constructor(
     private suspend fun analyze(ref: PhotoRef): PhotoAnalysis {
         // 1024px + 얼굴 검출 minFaceSize 0.04 (MlVisionEncoder): 단체 사진의 작은 얼굴까지 잡는다.
         // 임베더·라벨러는 내부에서 224 근처로 줄이므로 결과 차이가 없다.
-        val frame = source.thumbnail(ref.mediaId, maxSide = 1024) ?: return PhotoAnalysis(ref, failed = true)
+        val frame = source.thumbnail(ref.mediaId, maxSide = 1024) ?: return PhotoAnalysis(
+            ref,
+            failed = true
+        )
         return try {
             // 얼굴 모델이 아직 없거나(MVP) 인물 기능이 꺼져 있으면 얼굴만 건너뛰고 facesDone = false 로 남긴다.
             // 모델을 넣거나 기능을 켜면 그 사진들만 다시 분석된다 (INDEX_VERSION 을 올릴 필요 없음).

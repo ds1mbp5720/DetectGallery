@@ -61,5 +61,6 @@ fun meanNormalized(vectors: List<FloatArray>): FloatArray? {
     return l2Normalize(sum)
 }
 
-// ponytail: 메모리 전수 내적 O(N·D). 1만 장 × 1024차원 ≈ 40MB·수십 ms.
-// 5만 장을 넘으면 int8 양자화 또는 sqlite-vec(ANN)로 교체.
+// ponytail: 메모리 전수 내적 O(N·D). 장면 벡터는 장당 4KB(1024 × float) → 1만 장 ≈ 40MB, 3만 장 ≈ 120MB.
+// 얼굴 벡터(얼굴당 2KB)와 함께 앱 heap(기기마다 보통 256~512MB)에 올라가므로, 2~3만 장을 넘기 전에
+// int8 양자화(1/4) 또는 sqlite-vec(ANN)로 교체한다.
