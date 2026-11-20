@@ -84,10 +84,15 @@ fun AppNavHost(access: GalleryAccess, statusVm: AppStatusViewModel = hiltViewMod
                 items = Tab.entries.map { BottomItem(it.route, it.label, it.icon) },
                 selectedKey = tabOf(current?.destination?.route)?.route,
                 onSelect = { route ->
-                    nav.navigate(route) {
-                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
+                    if (tabOf(current?.destination?.route)?.route == route) {
+                        // 지금 탭을 다시 누르면 그 탭 첫 화면으로 (인물 상세 → 인물 목록). navigate 는 저장된 상세를 그대로 복원한다
+                        nav.popBackStack(route, inclusive = false)
+                    } else {
+                        nav.navigate(route) {
+                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 },
             )

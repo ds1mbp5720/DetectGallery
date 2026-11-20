@@ -28,6 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import lee.project.detectgallery.core.ui.mediaUri
 import coil.compose.AsyncImage
 import lee.project.detectgallery.core.domain.logic.FaceAnalysisState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 
 /** 인물 목록. 누르면 상세(얼굴 나누기·빼기·이름), 길게 누르면 합치기. 상단 스위치로 인물 기능 전체를 끈다. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -46,6 +48,12 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .clip(MaterialTheme.shapes.medium)
+                // 카드 전체가 토글: TalkBack 이 "인물 기능, 설명, 스위치, 켜짐" 을 한 번에 읽는다 (AlbumSheet 의 "모든 앨범" 과 같다)
+                .toggleable(value = state.facesEnabled, role = Role.Switch) {
+                    vm.onIntent(
+                        PeopleIntent.ToggleFaces(it)
+                    )
+                }
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -60,7 +68,8 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
             }
             Switch(
                 checked = state.facesEnabled,
-                onCheckedChange = { vm.onIntent(PeopleIntent.ToggleFaces(it)) })
+                onCheckedChange = null
+            )
         }
 
         if (!state.facesEnabled) {
@@ -128,6 +137,9 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
                                 ) else onOpenPerson(p.id)
                             },
                             onLongClick = { vm.onIntent(PeopleIntent.StartMerge(p)) },
+                            // 길게 누르기(합치기)는 보이지 않는 기능이라 TalkBack 동작 이름으로 알린다
+                            onClickLabel = if (state.mergeSource != null) "이 인물과 합치기" else "사진 보기",
+                            onLongClickLabel = "다른 인물과 합치기",
                         )
                         .padding(6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -193,7 +205,11 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
             },
         )
         // 실패 안내. 이 화면은 NavHost 의 Box 안에 놓이므로 화면 크기만큼 펼친 뒤 아래쪽에 붙인다
-        SnackbarHost(snackbar, Modifier.fillMaxSize().wrapContentHeight(Alignment.Bottom))
+        SnackbarHost(
+            snackbar, Modifier
+                .fillMaxSize()
+                .wrapContentHeight(Alignment.Bottom)
+        )
     }
 }
 

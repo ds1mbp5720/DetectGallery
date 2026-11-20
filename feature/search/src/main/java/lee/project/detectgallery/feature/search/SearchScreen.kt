@@ -57,6 +57,7 @@ import lee.project.detectgallery.core.ui.FaceThumb
 import lee.project.detectgallery.core.ui.PhotoGrid
 import lee.project.detectgallery.core.ui.components.ChipRow
 import lee.project.detectgallery.core.ui.components.SegmentedTabs
+import androidx.compose.ui.platform.LocalFocusManager
 
 private val QUICK = listOf("음식", "바다", "하늘", "웃는", "단체", "셀카", "흔들린")
 private val IMAGE_MODES = listOf(
@@ -154,6 +155,7 @@ private fun SearchField(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val focus = LocalFocusManager.current
     TextField(
         value = value,
         onValueChange = onValueChange,
@@ -189,7 +191,8 @@ private fun SearchField(
             unfocusedTrailingIconColor = colors.onSurfaceVariant,
         ),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+        // 검색하면 키보드를 내린다: 앱이 화면 끝까지 그려(edge-to-edge) 키보드가 결과 그리드 아래쪽을 가린다
+        keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); onSearch() }),
     )
 }
 
@@ -236,7 +239,12 @@ private fun SearchGuide(progress: IndexProgress?, modifier: Modifier = Modifier)
 
 /** 쿼리 사진에 얼굴이 여럿일 때 찾을 사람을 고른다. 왼쪽부터 (사진 속 위치 순). */
 @Composable
-private fun FaceChoiceDialog(uri: Uri, faces: List<DetectedFace>, onPick: (DetectedFace) -> Unit, onDismiss: () -> Unit) {
+private fun FaceChoiceDialog(
+    uri: Uri,
+    faces: List<DetectedFace>,
+    onPick: (DetectedFace) -> Unit,
+    onDismiss: () -> Unit
+) {
     val sorted = remember(faces) { faces.sortedBy { it.box.left } }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -256,7 +264,11 @@ private fun FaceChoiceDialog(uri: Uri, faces: List<DetectedFace>, onPick: (Detec
                             Modifier
                                 .size(72.dp)
                                 .clip(CircleShape)
-                                .clickable(onClickLabel = "이 사람으로 찾기", role = Role.Button) { onPick(f) },
+                                .clickable(onClickLabel = "이 사람으로 찾기", role = Role.Button) {
+                                    onPick(
+                                        f
+                                    )
+                                },
                             contentDescription = "얼굴 ${i + 1}/${sorted.size}, 왼쪽부터",
                         )
                     }
@@ -274,10 +286,12 @@ private fun FaceChoiceDialog(uri: Uri, faces: List<DetectedFace>, onPick: (Detec
  */
 @Composable
 private fun SensitivitySheet(value: Sensitivity, onChange: (Sensitivity) -> Unit) {
-    Column(Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 24.dp)
-        .padding(bottom = 32.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 32.dp)
+    ) {
         Text("검색 민감도", style = MaterialTheme.typography.titleMedium)
         Text(
             "결과에 다른 사진이 섞이면 엄격하게, 찾는 사진이 빠지면 느슨하게 옮겨 보세요.",
