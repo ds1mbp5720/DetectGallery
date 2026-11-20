@@ -40,6 +40,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.Lifecycle
+import androidx.navigation.NavBackStackEntry
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     LIVE("live", "카메라", Icons.Outlined.PhotoCamera),
@@ -50,6 +52,8 @@ private enum class Tab(val route: String, val label: String, val icon: ImageVect
 /** "people/{personId}" 같은 하위 화면도 그 탭으로 본다. */
 private fun tabOf(route: String?): Tab? =
     Tab.entries.firstOrNull { route == it.route || route?.startsWith(it.route + "/") == true }
+
+private fun NavBackStackEntry.resumed() = lifecycle.currentState == Lifecycle.State.RESUMED
 
 @Composable
 fun AppNavHost(access: GalleryAccess, statusVm: AppStatusViewModel = hiltViewModel()) {
@@ -112,11 +116,14 @@ fun AppNavHost(access: GalleryAccess, statusVm: AppStatusViewModel = hiltViewMod
             NavHost(nav, startDestination = Tab.SEARCH.route) {
                 composable(Tab.LIVE.route) { LiveScreen() }
                 composable(Tab.SEARCH.route) { SearchScreen() }
-                composable(Tab.PEOPLE.route) { PeopleScreen(onOpenPerson = { id -> nav.navigate("people/$id") }) }
+                // 이동은 화면이 RESUMED 일 때만: 전환 중에 두 번 누르면 상세가 두 번 쌓이고, 뒤로를 연타하면 한 화면 더 빠진다
+                composable(Tab.PEOPLE.route) { entry ->
+                    PeopleScreen(onOpenPerson = { id -> if (entry.resumed()) nav.navigate("people/$id") })
+                }
                 composable(
                     "people/{personId}",
                     arguments = listOf(navArgument("personId") { type = NavType.LongType }),
-                ) { PersonDetailScreen(onBack = { nav.popBackStack() }) }
+                ) { entry -> PersonDetailScreen(onBack = { if (entry.resumed()) nav.popBackStack() }) }
             }
         }
     }

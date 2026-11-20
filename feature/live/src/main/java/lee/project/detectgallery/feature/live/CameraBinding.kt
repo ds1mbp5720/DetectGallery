@@ -24,6 +24,7 @@ internal fun bindCamera(
     owner: LifecycleOwner,
     view: PreviewView,
     executor: ExecutorService,
+    bound: MutableList<UseCase>,   // 이 화면이 묶은 유스케이스. 풀 때 이것만 푼다 (unbindAll 은 새로 들어온 화면 것까지 푼다)
     onNoCamera: () -> Unit,
     shouldAnalyze: () -> Boolean,
     onFrame: (LiveIntent.Frame) -> Unit,
@@ -69,7 +70,9 @@ internal fun bindCamera(
             val frame = proxy.use { it.toBitmap().rotate(it.imageInfo.rotationDegrees).toImageFrame(maxSide = 640) }
             onFrame(LiveIntent.Frame(frame, SystemClock.uptimeMillis()))
         }
-        provider.unbindAll()
+        provider.unbind(*bound.toTypedArray())   // 같은 화면이 다시 묶을 때(뷰 재생성) 옛 것만
+        bound.clear()
         provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+        bound += listOf(preview, analysis)
     }, ContextCompat.getMainExecutor(context))
 }
