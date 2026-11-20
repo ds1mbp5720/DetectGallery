@@ -1,5 +1,8 @@
 package lee.project.detectgallery.core.domain.model
 
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
 /** 분석 입력. Bitmap 대신 ARGB 배열을 써서 domain 을 순수 JVM 으로 유지한다. */
 class ImageFrame(val width: Int, val height: Int, val argb: IntArray) {
     init {
@@ -55,5 +58,16 @@ data class PhotoAnalysis(
     val failed: Boolean = false,
 )
 
-class IndexedVector(val mediaId: Long, val vector: FloatArray)
+/**
+ * 검색 캐시용 벡터. int8 로 줄여 들고 있는다(장면 1024차원 장당 4KB → 1KB): 값 ≈ q[i] × scale.
+ * DB 에는 float 그대로 저장한다 → 바꿔도 재색인이 필요 없다. 내적은 dot(FloatArray, IndexedVector).
+ */
+class IndexedVector(val mediaId: Long, vector: FloatArray) {
+    val size: Int = vector.size
+    val scale: Float = (vector.maxOfOrNull { abs(it) } ?: 0f) / 127f   // 벡터마다 따로: 가장 큰 성분이 ±127
+    val q: ByteArray = ByteArray(size) {
+        if (scale == 0f) 0.toByte() else (vector[it] / scale).roundToInt().toByte()
+    }
+}
+
 enum class ImageSearchMode { PERSON, SCENE, DUPLICATE }

@@ -37,4 +37,8 @@ class StatusTextTest {
     @Test fun `선택한 사진만 허용이면 고른 사진 수라고 쓴다`() {
         assertEquals("고른 사진 12장 · 분석 12장", statusText(12, 12, indexing = false, partial = true).main)
     }
+    @Test fun `고른 앨범만 분석하면 고른 앨범이라고 쓰고 부분 접근이 우선한다`() {
+        assertEquals("고른 앨범 300장 · 분석 120장", statusText(300, 120, indexing = false, albums = true).main)
+        assertEquals("고른 사진 12장 · 분석 12장", statusText(12, 12, indexing = false, partial = true, albums = true).main)
+    }
 }

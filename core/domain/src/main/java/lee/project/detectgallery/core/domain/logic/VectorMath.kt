@@ -13,6 +13,18 @@ fun dot(a: FloatArray, b: FloatArray): Float {
     return s
 }
 
+/**
+ * 캐시 벡터(int8)와의 내적. 쿼리는 float 그대로 둔다(한쪽만 양자화): 오차가 캐시 쪽 반올림에서만 생긴다.
+ * L2 정규화 1024차원에서 float 내적과의 차이는 보통 0.001 안팎 (VectorMathTest).
+ */
+fun dot(a: FloatArray, b: IndexedVector): Float {
+        require(a.size == b.size) { "차원 불일치 ${a.size} != ${b.size}: 모델이 바뀌었으면 재색인 필요" }
+        val q = b.q
+        var s = 0f
+        for (i in a.indices) s += a[i] * q[i]
+        return s * b.scale
+    }
+
 fun l2Normalize(v: FloatArray): FloatArray {
     var sum = 0f
     for (x in v) sum += x * x
@@ -36,8 +48,8 @@ fun rankByBestMatch(
     val best = HashMap<Long, Float>()
     for (c in candidates) {
         // 모델 교체로 재색인 중이면 옛 차원 벡터가 섞여 있다 → 예외 대신 건너뛴다
-        if (c.vector.size != dim) continue
-        val score = queries.maxOf { dot(it, c.vector) }
+        if (c.size != dim) continue
+        val score = queries.maxOf { dot(it, c) }
         if (score >= threshold && score > (best[c.mediaId] ?: Float.NEGATIVE_INFINITY)) best[c.mediaId] = score
     }
     return best.entries.sortedByDescending { it.value }.take(topK).map { PhotoMatch(it.key, it.value) }
@@ -61,6 +73,6 @@ fun meanNormalized(vectors: List<FloatArray>): FloatArray? {
     return l2Normalize(sum)
 }
 
-// ponytail: 메모리 전수 내적 O(N·D). 장면 벡터는 장당 4KB(1024 × float) → 1만 장 ≈ 40MB, 3만 장 ≈ 120MB.
-// 얼굴 벡터(얼굴당 2KB)와 함께 앱 heap(기기마다 보통 256~512MB)에 올라가므로, 2~3만 장을 넘기 전에
-// int8 양자화(1/4) 또는 sqlite-vec(ANN)로 교체한다.
+// ponytail: 메모리 전수 내적 O(N·D). 캐시는 int8(IndexedVector)이라 장면 장당 1KB, 얼굴 하나 0.5KB
+// → 1만 장 ≈ 10MB, 5만 장 ≈ 50MB(+ 얼굴). 검색 한 번은 5만 장에 수십 ms.
+// 10만 장을 넘거나 검색이 수백 ms 가 되면 sqlite-vec(ANN)로 교체.

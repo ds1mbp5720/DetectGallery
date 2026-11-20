@@ -42,7 +42,7 @@ class RoomPhotoIndexRepository @Inject constructor(
         if (batch.isEmpty()) return
 
         val ids = batch.map { it.ref.mediaId }
-        val scenes = batch.mapNotNull { a -> a.scene?.let { IndexedVector(a.ref.mediaId, it) } }
+        val scenes = batch.mapNotNull { a -> a.scene?.let { a.ref.mediaId to it } }   // DB 에는 float 그대로
         val faces = batch.flatMap { a -> a.faces.map { f -> a.ref.mediaId to f } }
         withContext(NonCancellable) {
             // 이전 얼굴 읽기와 교체를 한 트랜잭션으로: 그 사이 사용자가 "얼굴 아님"·나누기를 하면 옛 상태로 덮어쓴다
@@ -61,7 +61,7 @@ class RoomPhotoIndexRepository @Inject constructor(
                             vectorVersion = if (it.failed) 0 else version,
                         )
                     },
-                    scenes = scenes.map { SceneEmbeddingEntity(it.mediaId, it.vector) },
+                    scenes = scenes.map { (id, v) -> SceneEmbeddingEntity(id, v) },
                     faces = faces.mapIndexed { i, (id, f) ->
                         FaceEntity(
                             mediaId = id, left = f.box.left, top = f.box.top, right = f.box.right, bottom = f.box.bottom,
@@ -76,7 +76,7 @@ class RoomPhotoIndexRepository @Inject constructor(
             }
             // "얼굴 아님" 을 이어받은 얼굴은 검색 캐시에 넣지 않는다 (DB 쿼리와 같은 조건)
             val searchable = faces.filterIndexed { i, _ -> !excludedNow[i] }.map { (id, f) -> IndexedVector(id, f.vector) }
-            patchCache(ids.toSet(), scenes, searchable)
+            patchCache(ids.toSet(), scenes.map { (id, v) -> IndexedVector(id, v) }, searchable)
         }
     }
 

@@ -11,9 +11,16 @@ kotlin {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
     }
 }
+tasks.test {
+    useJUnit() // JUnit 4 명시
+    testLogging {
+        events("skipped", "failed")
+    }
+}
 dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.javax.inject)
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
 }
