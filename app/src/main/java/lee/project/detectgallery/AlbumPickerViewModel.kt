@@ -17,12 +17,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import android.util.Log
 
 data class AlbumPickerUiState(
     val albums: List<Album>? = null,     // null = 불러오는 중
     val selected: Set<Long>? = null,     // null = 모든 앨범, 빈 집합 = 아무것도 안 고름(저장 불가)
     val lost: Boolean = false,           // 고른 앨범이 모두 사라짐 (지금은 아무것도 분석하지 않는 상태)
     val failed: Boolean = false,         // 앨범 목록을 읽지 못함
+    val saveFailed: Boolean = false,     // 저장 실패. 시트는 이미 닫혀 있어 AppNavHost 가 알린다
 )
 
 sealed interface AlbumPickerIntent {
@@ -31,6 +33,7 @@ sealed interface AlbumPickerIntent {
     data class Toggle(val id: Long) : AlbumPickerIntent
     data class SetAll(val all: Boolean) : AlbumPickerIntent
     data object Save : AlbumPickerIntent
+    data object SaveFailedShown : AlbumPickerIntent
 }
 
 /**
@@ -72,16 +75,40 @@ class AlbumPickerViewModel @Inject constructor(
                     )
                 }
             }
+
             is AlbumPickerIntent.Toggle -> _state.update { s ->
                 if (s.albums == null) s
-                else s.copy(selected = toggleAlbum(s.selected, intent.id, s.albums.mapTo(HashSet()) { it.id }), lost = false)
+                else s.copy(
+                    selected = toggleAlbum(
+                        s.selected,
+                        intent.id,
+                        s.albums.mapTo(HashSet()) { it.id }), lost = false
+                )
             }
-            is AlbumPickerIntent.SetAll -> _state.update { it.copy(selected = if (intent.all) null else emptySet(), lost = false) }
+
+            is AlbumPickerIntent.SetAll -> _state.update {
+                it.copy(
+                    selected = if (intent.all) null else emptySet(),
+                    lost = false
+                )
+            }
+
             AlbumPickerIntent.Save -> {
                 val s = _state.value
                 if (s.albums == null || s.failed || s.selected?.isEmpty() == true) return
-                viewModelScope.launch { setAlbums(s.selected ?: emptySet()) }   // 모든 앨범 = 빈 집합으로 저장. 시트는 바로 닫는다
+                // 시트는 바로 닫는다. 실패해도 앱이 죽지 않고 알리게 한다 (B1 의 launchSafely 와 같은 원칙)
+                viewModelScope.launch {
+                    try {
+                        setAlbums(s.selected ?: emptySet())   // 모든 앨범 = 빈 집합으로 저장
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e("Albums", "앨범 선택 저장 실패", e)
+                        _state.update { it.copy(saveFailed = true) }
+                    }
+                }
             }
+            AlbumPickerIntent.SaveFailedShown -> _state.update { it.copy(saveFailed = false) }
         }
     }
 }

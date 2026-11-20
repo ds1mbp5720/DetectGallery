@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavBackStackEntry
+import android.widget.Toast
+import androidx.compose.runtime.LaunchedEffect
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     LIVE("live", "카메라", Icons.Outlined.PhotoCamera),
@@ -67,6 +69,13 @@ fun AppNavHost(access: GalleryAccess, statusVm: AppStatusViewModel = hiltViewMod
     val albumVm: AlbumPickerViewModel =
         hiltViewModel()   // Activity 범위: 시트를 닫아도 저장이 끝까지, 회전해도 고르던 내용 유지
     val albumFiltered by statusVm.albumFiltered.collectAsStateWithLifecycle()
+    val albumState by albumVm.state.collectAsStateWithLifecycle()
+    LaunchedEffect(albumState.saveFailed) {   // 시트가 닫힌 뒤의 저장 실패라 화면 어디서든 보이는 토스트로
+        if (albumState.saveFailed) {
+            Toast.makeText(context, "앨범 선택을 저장하지 못했어요. 다시 골라 주세요.", Toast.LENGTH_SHORT).show()
+            albumVm.onIntent(AlbumPickerIntent.SaveFailedShown)
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,

@@ -8,30 +8,43 @@ data class VersionedVectorRow(val vector: FloatArray, val version: Int)
 data class PersonCenterRow(val personId: Long, val vector: FloatArray)
 data class PersonFaceRow(val personId: Long, val vector: FloatArray)
 data class PersonRow(val id: Long, val name: String?, val coverMediaId: Long?, val photoCount: Int)
-data class FaceBoxRow(val id: Long, val mediaId: Long, val left: Float, val top: Float, val right: Float, val bottom: Float)
+data class FaceBoxRow(
+    val id: Long,
+    val mediaId: Long,
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float
+)
 
 @Dao
 interface PersonDao {
     /** "얼굴 아님" 으로 뺀 얼굴은 다시 배정하지 않는다 */
     /** 옛 모델 벡터(재색인 대기)는 배정하지 않는다 → 재색인되면 이어받거나 그때 배정된다 */
-    @Query("""
+    @Query(
+        """
         SELECT f.id, f.vector FROM face f JOIN photo p ON p.mediaId = f.mediaId
         WHERE f.personId IS NULL AND f.excluded = 0 AND p.vectorVersion = :version ORDER BY f.id
-    """)
+    """
+    )
     suspend fun unassignedFaces(version: Int): List<FaceVectorIdRow>
 
     /** 인물 상세 화면용. 최신 사진부터 */
-    @Query("""
+    @Query(
+        """
         SELECT id, mediaId, `left`, top, `right`, bottom FROM face
         WHERE personId = :personId AND excluded = 0 ORDER BY mediaId DESC
-    """)
+    """
+    )
     fun facesOf(personId: Long): Flow<List<FaceBoxRow>>
 
     /** 나누기용. 버전과 함께 읽어 현재 버전이 없으면(모델 교체 중) 옛 벡터로라도 나눌 수 있게 한다 */
-    @Query("""
+    @Query(
+        """
         SELECT f.vector AS vector, p.vectorVersion AS version FROM face f JOIN photo p ON p.mediaId = f.mediaId
         WHERE f.id IN (:faceIds)
-    """)
+    """
+    )
     suspend fun vectorsOf(faceIds: List<Long>): List<VersionedVectorRow>
 
     @Query("SELECT DISTINCT personId FROM face WHERE id IN (:faceIds) AND personId IS NOT NULL")
@@ -45,10 +58,12 @@ interface PersonDao {
     suspend fun moveFacesTo(faceIds: List<Long>, personId: Long): Int
 
     /** 나누기로 비게 된 이름 없는 인물만 지운다. 이름 있는 인물은 사진 없는 이름 카드로 남는다 */
-    @Query("""
+    @Query(
+        """
         DELETE FROM person WHERE id IN (:ids) AND name IS NULL
           AND id NOT IN (SELECT personId FROM face WHERE personId IS NOT NULL)
-    """)
+    """
+    )
     suspend fun deleteUnnamedIfEmpty(ids: List<Long>): Int
 
     /**
@@ -56,11 +71,13 @@ interface PersonDao {
      * 중심이 방금 떼어 낸 얼굴들의 평균이라 그대로 두면 새 인물과 동률이 되어, 그 사람의 새 얼굴이 다시 이 이름에 붙는다.
      * 접근 범위 축소로 생긴 이름 카드는 여기를 거치지 않으므로 자동 재연결이 유지된다.
      */
-    @Query("""
+    @Query(
+        """
         UPDATE person SET centerVersion = 0
         WHERE id IN (:ids) AND name IS NOT NULL
           AND id NOT IN (SELECT personId FROM face WHERE personId IS NOT NULL)
-    """)
+    """
+    )
     suspend fun retireIfEmpty(ids: List<Long>): Int
 
     @Query("UPDATE face SET excluded = 1, personId = NULL WHERE id IN (:faceIds) AND excluded = 0")
@@ -78,15 +95,20 @@ interface PersonDao {
     @Query("SELECT id AS personId, center AS vector FROM person WHERE centerVersion = :version")
     suspend fun centers(version: Int): List<PersonCenterRow>
 
-    @Query("""
+    @Query(
+        """
         SELECT f.personId, f.vector FROM face f JOIN photo p ON p.mediaId = f.mediaId
         WHERE f.personId IS NOT NULL AND p.vectorVersion = :version
-    """)
+    """
+    )
     suspend fun facesWithPerson(version: Int): List<PersonFaceRow>
 
-    @Insert suspend fun insert(person: PersonEntity): Long
+    @Insert
+    suspend fun insert(person: PersonEntity): Long
 
-    @Query("UPDATE face SET personId = :personId WHERE id = :faceId")
+    // 미배정 얼굴을 읽은 뒤 커밋 전에 "얼굴 아님" 이 끼었으면 붙이지 않는다.
+    // 뺀 얼굴에 인물이 붙으면 상세에는 안 보이고 사진 수·이름 검색에는 잡힌다.
+    @Query("UPDATE face SET personId = :personId WHERE id = :faceId AND personId IS NULL AND excluded = 0")
     suspend fun assign(faceId: Long, personId: Long)
 
     /**
@@ -145,11 +167,13 @@ interface PersonDao {
         return true
     }
 
-    @Query("""
+    @Query(
+        """
         DELETE FROM person
         WHERE name IS NULL
           AND id NOT IN (SELECT DISTINCT personId FROM face WHERE personId IS NOT NULL)
-    """)
+    """
+    )
     suspend fun deleteOrphans(): Int
 
     /**
@@ -157,7 +181,8 @@ interface PersonDao {
      * 얼굴 없는 이름 인물도 보인다 (cover = null): 접근 범위 축소·재색인·INDEX_VERSION 올림·전부 나누기 뒤 남은 이름이다.
      * 숨기면 이름 검색에는 남는데 고칠 방법이 없다. 이름 없는 빈 인물은 deleteOrphans 가 지우므로 여기 안 나온다.
      */
-    @Query("""
+    @Query(
+        """
         SELECT p.id AS id, p.name AS name,
                MAX(f.mediaId) AS coverMediaId,
                COUNT(DISTINCT f.mediaId) AS photoCount
@@ -165,6 +190,7 @@ interface PersonDao {
         GROUP BY p.id
         HAVING photoCount > 0 OR p.name IS NOT NULL
         ORDER BY photoCount DESC
-    """)
+    """
+    )
     fun persons(): Flow<List<PersonRow>>
 }

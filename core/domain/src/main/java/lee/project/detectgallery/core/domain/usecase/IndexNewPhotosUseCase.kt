@@ -35,24 +35,29 @@ class IndexNewPhotosUseCase @Inject constructor(
         // 이번 실행에서 이미 시도한 사진(실패 포함)은 다시 시도하지 않는다 → 실패는 다음 실행에서 재시도.
         val attempted = HashSet<Long>()
         var processed = 0
-        for (pass in 1..MAX_PASSES) {
-            val n = indexOnce(attempted, onProgress)
-            processed += n
-            if (n == 0) break
+        try {
+            for (pass in 1..MAX_PASSES) {
+                val n = indexOnce(attempted, onProgress)
+                processed += n
+                if (n == 0) break
+            }
+            // 재색인·모델 교체 뒤 중심을 새 벡터 기준으로. 이번에 처리한 게 없어도, 지난 실행이 재계산 전에 끊겼으면
+            // 낡음 표시가 남아 있어 여기서 계산된다. 배정보다 먼저: 재분석된 얼굴을 이어받은 옛 버전 인물이 여기서 새 버전 중심을 얻어
+            // 배정 후보로 돌아온다. 그래야 이어받지 못한 그 사람의 얼굴이 새 인물이 아니라 이 인물에 붙는다.
+            persons.recomputeCenters(force = processed > 0)
+            // 마지막에 한 번 더: 색인 도중 합치기로 끊긴 얼굴이 미배정으로 돌아왔으면 여기서 다시 배정된다.
+            // 재색인이 아직 남았으면(실패 재시도 등) 새 인물은 만들지 않는다 (isMigrating)
+            assignPersons(createNew = !isMigrating(index.indexStates()))
+            persons.recomputeCenters(force = false)   // 방금 새 인물이 생겼으면(낡음 표시) 첫 얼굴 중심을 평균으로
+            persons.deleteOrphans()
+        } finally {
+            // 인물 기능이 꺼져 있으면 실행 끝마다 얼굴 데이터를 다시 지운다 (지워져 있으면 아무 일도 없다).
+            // 끄는 순간 색인 저장이 겹쳐 얼굴이 다시 들어갔거나, 끄는 도중 앱이 종료돼 삭제가 안 된 경우를 여기서 고친다.
+            // 이 실행은 Worker 의 runLock 안이라 다른 색인과 겹치지 않는다.
+            // finally: 앞에서 예외가 나도(재계산 실패 등) 정리는 한다. 안 그러면 다음에 성공하는 실행까지 남은 얼굴이 인물 목록에 보인다.
+            // deleteAllFaceData 는 NonCancellable 이라 취소(10분 제한) 중에도 끝난다.
+            if (!settings.facesEnabledNow()) index.deleteAllFaceData()
         }
-        // 재색인·모델 교체 뒤 중심을 새 벡터 기준으로. 이번에 처리한 게 없어도, 지난 실행이 재계산 전에 끊겼으면
-        // 낡음 표시가 남아 있어 여기서 계산된다. 배정보다 먼저: 재분석된 얼굴을 이어받은 옛 버전 인물이 여기서 새 버전 중심을 얻어
-        // 배정 후보로 돌아온다. 그래야 이어받지 못한 그 사람의 얼굴이 새 인물이 아니라 이 인물에 붙는다.
-        persons.recomputeCenters(force = processed > 0)
-        // 마지막에 한 번 더: 색인 도중 합치기로 끊긴 얼굴이 미배정으로 돌아왔으면 여기서 다시 배정된다.
-        // 재색인이 아직 남았으면(실패 재시도 등) 새 인물은 만들지 않는다 (isMigrating)
-        assignPersons(createNew = !isMigrating(index.indexStates()))
-        persons.recomputeCenters(force = false)   // 방금 새 인물이 생겼으면(낡음 표시) 첫 얼굴 중심을 평균으로
-        persons.deleteOrphans()
-        // 인물 기능이 꺼져 있으면 실행 끝마다 얼굴 데이터를 다시 지운다 (지워져 있으면 아무 일도 없다).
-        // 끄는 순간 색인 저장이 겹쳐 얼굴이 다시 들어갔거나, 끄는 도중 앱이 종료돼 삭제가 안 된 경우를 여기서 고친다.
-        // 이 실행은 Worker 의 runLock 안이라 다른 색인과 겹치지 않는다.
-        if (!settings.facesEnabledNow()) index.deleteAllFaceData()
     }
 
     /** 얼굴을 분석할 수 있고, 사용자가 켜 둔 상태인가. */

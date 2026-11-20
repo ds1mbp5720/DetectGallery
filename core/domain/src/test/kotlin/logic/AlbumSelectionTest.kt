@@ -9,25 +9,35 @@ import org.junit.Test
 class AlbumSelectionTest {
     private val all = setOf(1L, 2L, 3L)
 
-    @Test fun `모든 앨범에서 하나를 빼면 나머지가 선택된다`() {
+    @Test
+    fun `모든 앨범에서 하나를 빼면 나머지가 선택된다`() {
         assertEquals(setOf(2L, 3L), toggleAlbum(null, 1L, all))
     }
 
-    @Test fun `다시 전부 고르면 모든 앨범으로 접는다`() {
+    @Test
+    fun `다시 전부 고르면 모든 앨범으로 접는다`() {
         assertNull(toggleAlbum(setOf(2L, 3L), 1L, all))
     }
 
-    @Test fun `마지막 하나를 빼면 빈 선택이 된다`() {
+    @Test
+    fun `마지막 하나를 빼면 빈 선택이 된다`() {
         assertEquals(emptySet<Long>(), toggleAlbum(setOf(1L), 1L, all))
     }
 
-    @Test fun `사라진 앨범은 빠지고 전부면 모든 앨범`() {
+    @Test
+    fun `사라진 앨범은 빠지고 전부면 모든 앨범`() {
         assertEquals(setOf(2L), visibleSelection(setOf(2L, 9L), all))
         assertNull(visibleSelection(emptySet(), all))
         assertNull(visibleSelection(all, all))
     }
 
-    @Test fun `고른 앨범이 모두 사라지면 빈 선택으로 보여 다시 고르게 한다`() {
+    @Test
+    fun `고른 앨범이 모두 사라지면 빈 선택으로 보여 다시 고르게 한다`() {
         assertEquals(emptySet<Long>(), visibleSelection(setOf(9L), all))
+    }
+
+    @Test
+    fun `볼 수 있는 앨범이 없으면 고른 앨범을 모든 앨범으로 보이지 않는다`() {
+        assertEquals(emptySet<Long>(), visibleSelection(setOf(9L), emptySet()))
     }
 }
