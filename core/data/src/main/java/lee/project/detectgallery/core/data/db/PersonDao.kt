@@ -3,10 +3,10 @@ package lee.project.detectgallery.core.data.db
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
-data class FaceVectorIdRow(val id: Long, val vector: FloatArray)
+data class FaceVectorIdRow(val id: Long, val vector: FloatArray, val lowQuality: Boolean)
 data class VersionedVectorRow(val vector: FloatArray, val version: Int)
 data class PersonCenterRow(val personId: Long, val vector: FloatArray)
-data class PersonFaceRow(val personId: Long, val vector: FloatArray)
+data class PersonFaceRow(val personId: Long, val vector: FloatArray, val lowQuality: Boolean)
 data class PersonRow(val id: Long, val name: String?, val coverMediaId: Long?, val photoCount: Int)
 data class FaceBoxRow(
     val id: Long,
@@ -19,21 +19,23 @@ data class FaceBoxRow(
 
 @Dao
 interface PersonDao {
-    /** "얼굴 아님" 으로 뺀 얼굴은 다시 배정하지 않는다 */
-    /** 옛 모델 벡터(재색인 대기)는 배정하지 않는다 → 재색인되면 이어받거나 그때 배정된다 */
+    /**
+     * 배정할 얼굴. "얼굴 아님" 으로 뺀 얼굴은 다시 배정하지 않는다.
+     * 옛 모델 벡터(재색인 대기)도 배정하지 않는다 → 재색인되면 이어받거나 그때 배정된다.
+     */
     @Query(
         """
-        SELECT f.id, f.vector FROM face f JOIN photo p ON p.mediaId = f.mediaId
+        SELECT f.id, f.vector, f.lowQuality FROM face f JOIN photo p ON p.mediaId = f.mediaId
         WHERE f.personId IS NULL AND f.excluded = 0 AND p.vectorVersion = :version ORDER BY f.id
     """
     )
     suspend fun unassignedFaces(version: Int): List<FaceVectorIdRow>
 
-    /** 인물 상세 화면용. 최신 사진부터 */
+    /** 인물 상세 화면용. 최신 사진부터, 저품질 얼굴은 뒤로(첫 얼굴이 머리의 대표 얼굴이라 옆얼굴이 되지 않게) */
     @Query(
         """
         SELECT id, mediaId, `left`, top, `right`, bottom FROM face
-        WHERE personId = :personId AND excluded = 0 ORDER BY mediaId DESC
+        WHERE personId = :personId AND excluded = 0 ORDER BY lowQuality, mediaId DESC
     """
     )
     fun facesOf(personId: Long): Flow<List<FaceBoxRow>>
@@ -97,7 +99,7 @@ interface PersonDao {
 
     @Query(
         """
-        SELECT f.personId, f.vector FROM face f JOIN photo p ON p.mediaId = f.mediaId
+        SELECT f.personId, f.vector, f.lowQuality FROM face f JOIN photo p ON p.mediaId = f.mediaId
         WHERE f.personId IS NOT NULL AND p.vectorVersion = :version
     """
     )
@@ -177,14 +179,14 @@ interface PersonDao {
     suspend fun deleteOrphans(): Int
 
     /**
-     * 사진 많은 순. 대표 사진은 가장 최근(큰 id) 사진.
+     * 사진 많은 순. 대표 사진은 좋은 얼굴이 나온 가장 최근(큰 id) 사진, 좋은 얼굴이 없으면 가장 최근 사진.
      * 얼굴 없는 이름 인물도 보인다 (cover = null): 접근 범위 축소·재색인·INDEX_VERSION 올림·전부 나누기 뒤 남은 이름이다.
      * 숨기면 이름 검색에는 남는데 고칠 방법이 없다. 이름 없는 빈 인물은 deleteOrphans 가 지우므로 여기 안 나온다.
      */
     @Query(
         """
         SELECT p.id AS id, p.name AS name,
-               MAX(f.mediaId) AS coverMediaId,
+               COALESCE(MAX(CASE WHEN f.lowQuality = 0 THEN f.mediaId END), MAX(f.mediaId)) AS coverMediaId,
                COUNT(DISTINCT f.mediaId) AS photoCount
         FROM person p LEFT JOIN face f ON f.personId = p.id
         GROUP BY p.id

@@ -19,7 +19,12 @@ data class PhotoEntity(
 
 @Entity(
     tableName = "scene_embedding",
-    foreignKeys = [ForeignKey(PhotoEntity::class, ["mediaId"], ["mediaId"], onDelete = ForeignKey.CASCADE)],
+    foreignKeys = [ForeignKey(
+        PhotoEntity::class,
+        ["mediaId"],
+        ["mediaId"],
+        onDelete = ForeignKey.CASCADE
+    )],
 )
 data class SceneEmbeddingEntity(
     @PrimaryKey val mediaId: Long,
@@ -29,7 +34,12 @@ data class SceneEmbeddingEntity(
 @Entity(
     tableName = "face",
     indices = [Index("mediaId"), Index("personId")],
-    foreignKeys = [ForeignKey(PhotoEntity::class, ["mediaId"], ["mediaId"], onDelete = ForeignKey.CASCADE)],
+    foreignKeys = [ForeignKey(
+        PhotoEntity::class,
+        ["mediaId"],
+        ["mediaId"],
+        onDelete = ForeignKey.CASCADE
+    )],
 )
 data class FaceEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -39,6 +49,11 @@ data class FaceEntity(
     val personId: Long? = null,
     /** 사용자가 "이 사람 얼굴 아님" 으로 뺀 얼굴. 인물 배정·인물 검색에서 제외된다. */
     val excluded: Boolean = false,
+    /**
+     * 옆얼굴·작은 얼굴 (C3). 검색·배정에는 쓰고 새 인물·중심 계산에는 쓰지 않는다.
+     * defaultValue 는 남겨 둔다: 첫 마이그레이션 예시(MigrationTest)의 INSERT 가 이 열을 빼도 되게.
+     */
+    @ColumnInfo(defaultValue = "0") val lowQuality: Boolean = false,
 )
 
 @Entity(tableName = "person")
@@ -53,7 +68,12 @@ data class PersonEntity(
     tableName = "photo_label",
     primaryKeys = ["mediaId", "label"],
     indices = [Index("label")],
-    foreignKeys = [ForeignKey(PhotoEntity::class, ["mediaId"], ["mediaId"], onDelete = ForeignKey.CASCADE)],
+    foreignKeys = [ForeignKey(
+        PhotoEntity::class,
+        ["mediaId"],
+        ["mediaId"],
+        onDelete = ForeignKey.CASCADE
+    )],
 )
 data class PhotoLabelEntity(val mediaId: Long, val label: String, val confidence: Float)
 

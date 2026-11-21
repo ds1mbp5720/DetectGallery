@@ -20,6 +20,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import android.util.Log
 import kotlinx.coroutines.CancellationException
+import lee.project.detectgallery.core.domain.logic.personCenter
 
 @Singleton
 class RoomPersonRepository @Inject constructor(
@@ -32,7 +33,7 @@ class RoomPersonRepository @Inject constructor(
     private val prefs = context.getSharedPreferences("persons", Context.MODE_PRIVATE)
 
     override suspend fun unassignedFaces() =
-        dao.unassignedFaces(INDEX_VERSION).map { FaceRow(it.id, it.vector) }
+        dao.unassignedFaces(INDEX_VERSION).map { FaceRow(it.id, it.vector, it.lowQuality) }
 
     override suspend fun centers() =
         dao.centers(INDEX_VERSION).map { PersonCenter(it.personId, it.vector) }
@@ -69,9 +70,10 @@ class RoomPersonRepository @Inject constructor(
         try {
             db.withTransaction {
                 // 현재 버전 얼굴만 쓴다. 모델 교체 중 새 얼굴이 아직 없는 인물은 옛 중심·옛 버전 그대로 남아 배정 후보에서 빠진다.
+                // 저품질 얼굴은 빼고 평균한다 (personCenter)
                 val centers = dao.facesWithPerson(INDEX_VERSION)
-                    .groupBy({ it.personId }, { it.vector })
-                    .mapNotNull { (id, vs) -> meanNormalized(vs)?.let { id to it } }
+                    .groupBy { it.personId }
+                    .mapNotNull { (id, rows) -> personCenter(rows.map { it.vector to it.lowQuality })?.let { id to it } }
                     .toMap()
                 dao.updateCenters(centers, INDEX_VERSION)
             }
@@ -117,6 +119,7 @@ class RoomPersonRepository @Inject constructor(
         val current = rows.filter { it.version == INDEX_VERSION }
         val (vs, version) = if (current.isNotEmpty()) current to INDEX_VERSION
         else rows.groupBy { it.version }.maxBy { it.value.size }.value to 0
+        // 저품질 얼굴도 섞인 임시 중심이다: 나누기 직후 recomputeCentersAfterEdit 가 좋은 얼굴 기준(personCenter)으로 다시 계산한다
         val center = meanNormalized(vs.map { it.vector }) ?: return@withTransaction null
         val owners = faceIds.chunked(500).flatMap { dao.personIdsOf(it) }.distinct()
         val newId = dao.split(faceIds, center, version)

@@ -29,31 +29,38 @@ class RoomPhotoIndexRepository @Inject constructor(
     private var sceneCache: List<IndexedVector>? = null
     private var faceCache: List<IndexedVector>? = null
 
-    override suspend fun save(all: List<PhotoAnalysis>, version: Int) {
+    override suspend fun save(batch: List<PhotoAnalysis>, version: Int) {
         // 실패한 사진 중 내용이 그대로인 것(변경 번호 같음)은 기존 결과를 지우지 않는다.
         // 지우면 다음에 성공해도 이어받을 얼굴이 없어 합쳐 둔 인물이 그 사진에서 다시 갈라진다.
         // 내용이 바뀐 사진의 실패는 옛 결과가 틀린 정보라 아래 replace 로 지운다.
-        val failedIds = all.filter { it.failed }.map { it.ref.mediaId }
+        val failedIds = batch.filter { it.failed }.map { it.ref.mediaId }
         val stored = failedIds.chunked(500).flatMap { dao.statesOf(it) }.associateBy { it.mediaId }
-        val keepIds = all.filter { a -> a.failed && stored[a.ref.mediaId]?.generation == a.ref.generation }
-            .mapTo(HashSet()) { it.ref.mediaId }
+        val keepIds =
+            batch.filter { a -> a.failed && stored[a.ref.mediaId]?.generation == a.ref.generation }
+                .mapTo(HashSet()) { it.ref.mediaId }
         keepIds.chunked(500).forEach { dao.markFailed(it) }
-        val batch = all.filterNot { it.ref.mediaId in keepIds }
-        if (batch.isEmpty()) return
+        val toSave = batch.filterNot { it.ref.mediaId in keepIds }
+        if (toSave.isEmpty()) return
 
-        val ids = batch.map { it.ref.mediaId }
-        val scenes = batch.mapNotNull { a -> a.scene?.let { a.ref.mediaId to it } }   // DB 에는 float 그대로
-        val faces = batch.flatMap { a -> a.faces.map { f -> a.ref.mediaId to f } }
+        val ids = toSave.map { it.ref.mediaId }
+        val scenes =
+            toSave.mapNotNull { a -> a.scene?.let { a.ref.mediaId to it } }   // DB 에는 float 그대로
+        val faces = toSave.flatMap { a -> a.faces.map { f -> a.ref.mediaId to f } }
         withContext(NonCancellable) {
             // 이전 얼굴 읽기와 교체를 한 트랜잭션으로: 그 사이 사용자가 "얼굴 아님"·나누기를 하면 옛 상태로 덮어쓴다
             val excludedNow = db.withTransaction {
                 // 재색인되는 사진의 이전 얼굴. 같은 자리 얼굴에 인물(이름·합치기 결과)과 "얼굴 아님" 을 이어 준다.
                 // 미배정 이전 얼굴도 짝짓기 후보에 넣는다: 빼면 더 잘 겹치는 미배정 얼굴을 두고 옆 사람의 인물을 받는다.
                 val previous = ids.chunked(500).flatMap { dao.facesOf(it) }.groupBy { it.mediaId }
-                val matched = batch.flatMap { a -> matchPrevious(a.faces.map { it.box }, previous[a.ref.mediaId].orEmpty()) }
+                val matched = toSave.flatMap { a ->
+                    matchPrevious(
+                        a.faces.map { it.box },
+                        previous[a.ref.mediaId].orEmpty()
+                    )
+                }
                 val excluded = matched.map { it?.excluded ?: false }
                 dao.replace(
-                    photos = batch.map {
+                    photos = toSave.map {
                         PhotoEntity(
                             it.ref.mediaId, it.ref.dateTaken, it.ref.generation, it.dHash,
                             indexVersion = if (it.failed) 0 else version,
@@ -64,18 +71,32 @@ class RoomPhotoIndexRepository @Inject constructor(
                     scenes = scenes.map { (id, v) -> SceneEmbeddingEntity(id, v) },
                     faces = faces.mapIndexed { i, (id, f) ->
                         FaceEntity(
-                            mediaId = id, left = f.box.left, top = f.box.top, right = f.box.right, bottom = f.box.bottom,
+                            mediaId = id,
+                            left = f.box.left,
+                            top = f.box.top,
+                            right = f.box.right,
+                            bottom = f.box.bottom,
                             vector = f.vector,
                             personId = matched[i]?.personId,
                             excluded = excluded[i],
+                            lowQuality = f.lowQuality,
                         )
                     },
-                    labels = batch.flatMap { a -> a.labels.map { PhotoLabelEntity(a.ref.mediaId, it.name, it.confidence) } },
+                    labels = toSave.flatMap { a ->
+                        a.labels.map {
+                            PhotoLabelEntity(
+                                a.ref.mediaId,
+                                it.name,
+                                it.confidence
+                            )
+                        }
+                    },
                 )
                 excluded
             }
             // "얼굴 아님" 을 이어받은 얼굴은 검색 캐시에 넣지 않는다 (DB 쿼리와 같은 조건)
-            val searchable = faces.filterIndexed { i, _ -> !excludedNow[i] }.map { (id, f) -> IndexedVector(id, f.vector) }
+            val searchable = faces.filterIndexed { i, _ -> !excludedNow[i] }
+                .map { (id, f) -> IndexedVector(id, f.vector) }
             patchCache(ids.toSet(), scenes.map { (id, v) -> IndexedVector(id, v) }, searchable)
         }
     }
@@ -89,26 +110,36 @@ class RoomPhotoIndexRepository @Inject constructor(
     }
 
     /** 캐시가 아직 안 만들어졌으면(null) 손대지 않는다. 다음 조회 때 DB 에서 통째로 읽는다. */
-    private suspend fun patchCache(ids: Set<Long>, scenes: List<IndexedVector>, faces: List<IndexedVector>) = lock.withLock {
+    private suspend fun patchCache(
+        ids: Set<Long>,
+        scenes: List<IndexedVector>,
+        faces: List<IndexedVector>
+    ) = lock.withLock {
         sceneCache = sceneCache?.let { c -> c.filterNot { it.mediaId in ids } + scenes }
         faceCache = faceCache?.let { c -> c.filterNot { it.mediaId in ids } + faces }
     }
 
     override suspend fun sceneVectors() = lock.withLock {
-        sceneCache ?: dao.scenes(INDEX_VERSION).map { IndexedVector(it.mediaId, it.vector) }.also { sceneCache = it }
+        sceneCache ?: dao.scenes(INDEX_VERSION).map { IndexedVector(it.mediaId, it.vector) }
+            .also { sceneCache = it }
     }
 
     override suspend fun faceVectors() = lock.withLock {
-        faceCache ?: dao.faces(INDEX_VERSION).map { IndexedVector(it.mediaId, it.vector) }.also { faceCache = it }
+        faceCache ?: dao.faces(INDEX_VERSION).map { IndexedVector(it.mediaId, it.vector) }
+            .also { faceCache = it }
     }
 
     override suspend fun dHashes() = dao.hashes().associate { it.mediaId to it.dHash }
-    override suspend fun photosByPerson(names: List<String>) = dao.byPersons(names.distinct(), names.distinct().size).toSet()
+    override suspend fun photosByPerson(names: List<String>) =
+        dao.byPersons(names.distinct(), names.distinct().size).toSet()
+
     override suspend fun photosByLabels(labels: List<String>) = dao.byLabels(labels)
-    override suspend fun photosInRange(range: LongRange) = dao.inRange(range.first, range.last + 1).toSet()
+    override suspend fun photosInRange(range: LongRange) =
+        dao.inRange(range.first, range.last + 1).toSet()
 
     override suspend fun indexStates() =
-        dao.states().associate { it.mediaId to IndexedState(it.generation, it.indexVersion, it.facesDone) }
+        dao.states()
+            .associate { it.mediaId to IndexedState(it.generation, it.indexVersion, it.facesDone) }
 
     override suspend fun deleteAllFaceData() = withContext(NonCancellable) {
         dao.deleteAllFaceData(StateTag.FACE_TAGS.toList())

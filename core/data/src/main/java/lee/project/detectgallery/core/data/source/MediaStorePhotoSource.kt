@@ -149,9 +149,10 @@ class MediaStorePhotoSource @Inject constructor(
                 d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE        // HARDWARE 비트맵은 getPixels 불가
                 val s = info.size
                 val scale = maxSide.toFloat() / maxOf(s.width, s.height)
+                // 아주 긴 파노라마는 짧은 변이 0 이 되어 예외(→ 매 실행 재시도) → 최소 1픽셀
                 if (scale < 1f) d.setTargetSize(
-                    (s.width * scale).toInt(),
-                    (s.height * scale).toInt()
+                    (s.width * scale).toInt().coerceAtLeast(1),
+                    (s.height * scale).toInt().coerceAtLeast(1)
                 )
             }.toImageFrame(maxSide)
         }.getOrNull()
