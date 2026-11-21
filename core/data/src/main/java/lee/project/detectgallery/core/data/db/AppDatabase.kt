@@ -29,9 +29,10 @@ abstract class AppDatabase : RoomDatabase() {
          *   }
          */
         val MIGRATIONS: Array<Migration> = emptyArray()
+        const val NAME = "gallery-index.db"   // PrefsSettingsRepository 도 이 파일을 읽는다(인물 기능 기본값 판정)
 
         fun build(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "gallery-index.db")
+            Room.databaseBuilder(context, AppDatabase::class.java, NAME)
                 .addMigrations(*MIGRATIONS)
                 .addCallback(object : Callback() {
                     // onCreate 가 아니라 onOpen: 앱 업데이트로 바뀐 사전이 기존 사용자에게도 반영되게
