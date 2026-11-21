@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -100,10 +100,19 @@ fun PersonDetailScreen(onBack: () -> Unit, vm: PersonDetailViewModel = hiltViewM
                 TopAppBar(
                     // 빈 상태엔 머리가 없으므로 처음부터 이름을 띄운다
                     title = {
-                        if (headerGone || state.faces.isEmpty()) Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (headerGone || state.faces.isEmpty()) Text(
+                            title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로") }
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "뒤로"
+                            )
+                        }
                     },
                     actions = {
                         if (state.loaded) {
@@ -123,12 +132,18 @@ fun PersonDetailScreen(onBack: () -> Unit, vm: PersonDetailViewModel = hiltViewM
         },
     ) { padding ->
         when {
-            !state.loaded -> Box(Modifier.padding(padding).fillMaxSize())
+            !state.loaded -> Box(
+                Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+            )
+
             state.faces.isEmpty() -> NoticeCard(
                 title = "이 인물의 사진이 없어요",
                 body = "인물 목록에서 이 인물을 길게 눌러 다른 인물과 합치면 이름이 옮겨 가요.",
                 modifier = Modifier.padding(padding),
             )
+
             else -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(96.dp),
                 state = grid,
@@ -138,13 +153,17 @@ fun PersonDetailScreen(onBack: () -> Unit, vm: PersonDetailViewModel = hiltViewM
                 item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
                     Header(title, state.faces.first(), photoCount, state.faces.size, selecting)
                 }
-                items(state.faces, key = { it.faceId }) { f ->
+                itemsIndexed(state.faces, key = { _, f -> f.faceId }) { i, f ->
                     FaceCell(
                         face = f,
+                        label = "얼굴 ${i + 1}/${state.faces.size}",   // TalkBack 이 셀을 구분하게 (FaceChoiceDialog 와 같은 방식)
                         selected = f.faceId in state.selected,
                         selecting = selecting,
                         onClick = {
-                            if (selecting) vm.onIntent(PersonDetailIntent.Toggle(f.faceId)) else openInGallery(context, f.mediaId)
+                            if (selecting) vm.onIntent(PersonDetailIntent.Toggle(f.faceId)) else openInGallery(
+                                context,
+                                f.mediaId
+                            )
                         },
                         onLongClick = { vm.onIntent(PersonDetailIntent.Toggle(f.faceId)) },
                     )
@@ -164,13 +183,38 @@ fun PersonDetailScreen(onBack: () -> Unit, vm: PersonDetailViewModel = hiltViewM
 
 /** 큰 대표 얼굴 + 이름 + 장 수 + 사용법 한 줄. 그리드 첫 줄을 가로로 다 차지하고 함께 스크롤된다. */
 @Composable
-private fun Header(title: String, cover: PersonFace, photoCount: Int, faceCount: Int, selecting: Boolean) {
+private fun Header(
+    title: String,
+    cover: PersonFace,
+    photoCount: Int,
+    faceCount: Int,
+    selecting: Boolean
+) {
     val colors = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            FaceThumb(mediaUri(cover.mediaId), cover.box.left, cover.box.top, cover.box.right, cover.box.bottom, Modifier.size(72.dp))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 12.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            FaceThumb(
+                mediaUri(cover.mediaId),
+                cover.box.left,
+                cover.box.top,
+                cover.box.right,
+                cover.box.bottom,
+                Modifier.size(72.dp),
+                contentDescription = null,   // 장식. 이름은 옆 글자가 읽는다
+            )
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.headlineSmall, color = colors.onSurface)
+                Text(
+                    title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = colors.onSurface
+                )
                 Text(
                     if (faceCount == photoCount) "사진 ${photoCount}장" else "사진 ${photoCount}장 · 얼굴 ${faceCount}개",
                     style = MaterialTheme.typography.bodyMedium,
@@ -190,16 +234,35 @@ private fun Header(title: String, cover: PersonFace, photoCount: Int, faceCount:
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FaceCell(face: PersonFace, selected: Boolean, selecting: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun FaceCell(
+    face: PersonFace,
+    label: String,
+    selected: Boolean,
+    selecting: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
-    Box(Modifier.padding(6.dp).aspectRatio(1f)) {
+    Box(
+        Modifier
+            .padding(6.dp)
+            .aspectRatio(1f)
+    ) {
         Box(
             Modifier
                 .fillMaxSize()
                 .clip(CircleShape)
-                .then(if (selected) Modifier.border(3.dp, colors.primary, CircleShape) else Modifier)
+                .then(
+                    if (selected) Modifier.border(
+                        3.dp,
+                        colors.primary,
+                        CircleShape
+                    ) else Modifier
+                )
                 .combinedClickable(
-                    onClickLabel = when { !selecting -> "갤러리에서 열기"; selected -> "고르기 해제"; else -> "고르기" },
+                    onClickLabel = when {
+                        !selecting -> "갤러리에서 열기"; selected -> "고르기 해제"; else -> "고르기"
+                    },
                     onLongClickLabel = "고르기",
                     onClick = onClick,
                     onLongClick = onLongClick,
@@ -207,7 +270,15 @@ private fun FaceCell(face: PersonFace, selected: Boolean, selecting: Boolean, on
                 .semantics { this.selected = selected }
                 .padding(if (selected) 7.dp else 0.dp),   // 고른 얼굴은 테두리 안쪽으로 작아진다
         ) {
-            FaceThumb(mediaUri(face.mediaId), face.box.left, face.box.top, face.box.right, face.box.bottom, Modifier.fillMaxSize())
+            FaceThumb(
+                mediaUri(face.mediaId),
+                face.box.left,
+                face.box.top,
+                face.box.right,
+                face.box.bottom,
+                Modifier.fillMaxSize(),
+                contentDescription = label,
+            )
         }
         if (selecting) {
             // 고르는 중엔 모든 얼굴에 동그라미: 빈 원 = 안 고름, 파란 원 + 체크 = 고름
@@ -220,7 +291,12 @@ private fun FaceCell(face: PersonFace, selected: Boolean, selecting: Boolean, on
                     .border(2.dp, if (selected) colors.surface else colors.outline, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(16.dp))
+                if (selected) Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = colors.onPrimary,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }
@@ -231,14 +307,27 @@ private fun FaceCell(face: PersonFace, selected: Boolean, selecting: Boolean, on
 private fun SelectionBar(onExclude: () -> Unit, onSplit: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(color = colors.surfaceContainer) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
             Text(
                 "다른 사람이면 나누기(새 인물로), 사람 얼굴이 아니면 얼굴 아님.",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant,
             )
-            Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onExclude, modifier = Modifier.weight(1f)) { Text("얼굴 아님") }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onExclude,
+                    modifier = Modifier.weight(1f)
+                ) { Text("얼굴 아님") }
                 Button(onClick = onSplit, modifier = Modifier.weight(1f)) { Text("나누기") }
             }
         }

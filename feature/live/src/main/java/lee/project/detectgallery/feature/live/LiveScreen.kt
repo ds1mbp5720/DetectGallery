@@ -432,8 +432,8 @@ private fun DetectionOverlay(state: LiveUiState, onTap: (Float, Float) -> Unit) 
     }
 }
 
-/** 박스 라벨과 TalkBack 동작 이름 (같은 말을 쓴다). */
 // ponytail: OBJECT 는 COCO 영문 라벨 그대로다(예: "cup 찾기"). 한글이 필요하면 kindOf 옆에 라벨 사전을 둔다.
+/** 박스 라벨과 TalkBack 동작 이름 (같은 말을 쓴다). */
 private fun detectionName(d: LiveDetection): String = when (d.kind) {
     DetectionKind.FACE -> "얼굴"
     DetectionKind.PERSON -> "사람"

@@ -28,6 +28,7 @@ data class PeopleUiState(
     val faceState: FaceAnalysisState? = null,   // null = 현황 첫 값 전
     val notice: String? = null,                  // 합치기·켜기/끄기 실패 안내 (스낵바)
     val faceModel: Boolean = true,               // 얼굴 모델이 있는가. 없으면 켜기 스위치를 막는다
+    val loaded: Boolean = false,                 // 인물 목록 첫 결과를 받았는가 (전에는 빈 목록 안내를 비추지 않는다)
 )
 
 sealed interface PeopleIntent {
@@ -78,6 +79,7 @@ class PeopleViewModel @Inject constructor(
                 ),
                 notice = msg,
                 faceModel = vision.facesAvailable,
+                loaded = true,
             )
             // 첫 값은 지금 설정으로: 기본값(꺼짐)으로 시작하면 켜 둔 사용자에게도 잠깐 "꺼짐" 이 보이고, 그때 누르면 켜기 동의가 뜬다
         }.stateIn(

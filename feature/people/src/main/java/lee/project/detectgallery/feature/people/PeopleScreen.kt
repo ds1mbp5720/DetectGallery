@@ -1,35 +1,59 @@
 package lee.project.detectgallery.feature.people
 
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import lee.project.detectgallery.core.ui.mediaUri
 import coil.compose.AsyncImage
 import lee.project.detectgallery.core.domain.logic.FaceAnalysisState
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.semantics.Role
+import lee.project.detectgallery.core.ui.mediaUri
 
 /** 인물 목록. 누르면 상세(얼굴 나누기·빼기·이름), 길게 누르면 합치기. 상단 스위치로 인물 기능 전체를 끈다. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -76,9 +100,11 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
         }
         if (!state.faceModel) {
             // 모델 없음이 꺼짐보다 먼저(faceAnalysisState 와 같은 순서): 켜도 분석할 수 없으므로 동의를 받지 않는다
-            Box(Modifier
-                .fillMaxSize()
-                .padding(32.dp), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(32.dp), contentAlignment = Alignment.Center
+            ) {
                 Text(faceStatusText(FaceAnalysisState.ModelMissing))
             }
             return@Column
@@ -118,6 +144,7 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
         }
 
         if (state.people.isEmpty()) {
+            if (!state.loaded) return@Column   // 첫 결과 전: 상태 안내를 잠깐 비추지 않는다
             Box(
                 Modifier
                     .fillMaxSize()
@@ -174,8 +201,10 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
                                 .background(MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center,
                         ) {
+                            // 장식(이름 첫 글자). 이름은 아래 글자가 읽는다 (B35 의 대표 사진과 같게)
                             Text(
                                 p.name?.take(1).orEmpty(),
+                                Modifier.clearAndSetSemantics {},
                                 style = MaterialTheme.typography.titleLarge
                             )
                         }
@@ -298,7 +327,7 @@ internal fun RenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: (St
 }
 // 목록의 대표 사진은 사진 전체를 원형으로 자른다. 얼굴만 보이게 하려면 대표 얼굴의 box 로 FaceThumb 를 쓴다.
 
-/** 인물 목록이 비었을 때의 안내. 꺼짐은 위에서 따로 처리하지만 when 을 빠짐없이 쓰려고 둔다. */
+/** 인물 목록이 비었을 때의 안내. 모델 없음·꺼짐은 위에서 처리하지만(모델 없음은 여기 문구를 쓴다) when 을 빠짐없이 쓰려고 둔다. */
 private fun faceStatusText(s: FaceAnalysisState?): String = when (s) {
     FaceAnalysisState.ModelMissing -> "인물 모델이 설치되지 않아 얼굴을 분석하지 않아요. 사진·키워드 검색은 그대로 쓸 수 있어요."
     FaceAnalysisState.Disabled -> "인물 기능이 꺼져 있어요. 얼굴을 분석하지 않고 얼굴 데이터도 보관하지 않아요."
