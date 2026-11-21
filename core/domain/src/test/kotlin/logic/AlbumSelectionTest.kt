@@ -37,6 +37,12 @@ class AlbumSelectionTest {
     }
 
     @Test
+    fun `사라진 앨범이 섞여 있으면 남은 게 전부여도 모든 앨범으로 접지 않는다`() {
+        assertEquals(all, visibleSelection(all + 9L, all))
+    }
+
+
+    @Test
     fun `볼 수 있는 앨범이 없으면 고른 앨범을 모든 앨범으로 보이지 않는다`() {
         assertEquals(emptySet<Long>(), visibleSelection(setOf(9L), emptySet()))
     }

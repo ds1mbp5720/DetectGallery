@@ -64,7 +64,11 @@ data class PhotoAnalysis(
  */
 class IndexedVector(val mediaId: Long, vector: FloatArray) {
     val size: Int = vector.size
-    val scale: Float = (vector.maxOfOrNull { abs(it) } ?: 0f) / 127f   // 벡터마다 따로: 가장 큰 성분이 ±127
+
+    // 벡터마다 따로: 가장 큰 성분이 ±127. NaN·무한대가 섞이면(max 가 그 값이 된다) 0 벡터로 둔다:
+    // 그대로 나누면 roundToInt 가 예외를 던져 캐시를 만들지 못하고 모든 검색이 실패한다.
+    val scale: Float =
+        (vector.maxOfOrNull { abs(it) } ?: 0f).let { if (it.isFinite()) it / 127f else 0f }
     val q: ByteArray = ByteArray(size) {
         if (scale == 0f) 0.toByte() else (vector[it] / scale).roundToInt().toByte()
     }

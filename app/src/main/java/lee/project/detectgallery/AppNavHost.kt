@@ -44,6 +44,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavBackStackEntry
 import android.widget.Toast
 import androidx.compose.runtime.LaunchedEffect
+import androidx.navigation.NavController
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     LIVE("live", "카메라", Icons.Outlined.PhotoCamera),
@@ -55,7 +56,8 @@ private enum class Tab(val route: String, val label: String, val icon: ImageVect
 private fun tabOf(route: String?): Tab? =
     Tab.entries.firstOrNull { route == it.route || route?.startsWith(it.route + "/") == true }
 
-private fun NavBackStackEntry.resumed() = lifecycle.currentState == Lifecycle.State.RESUMED
+/** 이 항목이 지금 맨 위 화면인가. 이동·뒤로를 맨 위 화면에서 온 것만 받는다(연타는 첫 번째 뒤로 맨 위가 바뀌어 걸러진다). */
+private fun NavController.isTop(entry: NavBackStackEntry) = currentBackStackEntry?.id == entry.id
 
 @Composable
 fun AppNavHost(access: GalleryAccess, statusVm: AppStatusViewModel = hiltViewModel()) {
@@ -130,14 +132,15 @@ fun AppNavHost(access: GalleryAccess, statusVm: AppStatusViewModel = hiltViewMod
             NavHost(nav, startDestination = Tab.SEARCH.route) {
                 composable(Tab.LIVE.route) { LiveScreen() }
                 composable(Tab.SEARCH.route) { SearchScreen() }
-                // 이동은 화면이 RESUMED 일 때만: 전환 중에 두 번 누르면 상세가 두 번 쌓이고, 뒤로를 연타하면 한 화면 더 빠진다
+                // 이동·뒤로는 그 화면이 맨 위일 때만: 두 번 누르면 상세가 두 번 쌓이고, 뒤로를 연타하면 한 화면 더 빠진다.
+                // RESUMED 로 거르면 전환 애니메이션 중(STARTED)의 자동 닫기(인물이 사라짐 → onBack)까지 막혀 빈 상세에 남는다.
                 composable(Tab.PEOPLE.route) { entry ->
-                    PeopleScreen(onOpenPerson = { id -> if (entry.resumed()) nav.navigate("people/$id") })
+                    PeopleScreen(onOpenPerson = { id -> if (nav.isTop(entry)) nav.navigate("people/$id") })
                 }
                 composable(
                     "people/{personId}",
                     arguments = listOf(navArgument("personId") { type = NavType.LongType }),
-                ) { entry -> PersonDetailScreen(onBack = { if (entry.resumed()) nav.popBackStack() }) }
+                ) { entry -> PersonDetailScreen(onBack = { if (nav.isTop(entry)) nav.popBackStack() }) }
             }
         }
     }

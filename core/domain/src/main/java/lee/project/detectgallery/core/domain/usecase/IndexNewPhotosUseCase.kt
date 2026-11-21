@@ -35,6 +35,7 @@ class IndexNewPhotosUseCase @Inject constructor(
         // 이번 실행에서 이미 시도한 사진(실패 포함)은 다시 시도하지 않는다 → 실패는 다음 실행에서 재시도.
         val attempted = HashSet<Long>()
         var processed = 0
+        var failure: Throwable? = null
         try {
             for (pass in 1..MAX_PASSES) {
                 val n = indexOnce(attempted, onProgress)
@@ -50,26 +51,26 @@ class IndexNewPhotosUseCase @Inject constructor(
             assignPersons(createNew = !isMigrating(index.indexStates()))
             persons.recomputeCenters(force = false)   // 방금 새 인물이 생겼으면(낡음 표시) 첫 얼굴 중심을 평균으로
             persons.deleteOrphans()
+        } catch (e: Throwable) {
+            failure = e
+            throw e
         } finally {
             // 인물 기능이 꺼져 있으면 실행 끝마다 얼굴 데이터를 다시 지운다 (지워져 있으면 아무 일도 없다).
             // 끄는 순간 색인 저장이 겹쳐 얼굴이 다시 들어갔거나, 끄는 도중 앱이 종료돼 삭제가 안 된 경우를 여기서 고친다.
             // 이 실행은 Worker 의 runLock 안이라 다른 색인과 겹치지 않는다.
             // finally: 앞에서 예외가 나도(재계산 실패 등) 정리는 한다. 안 그러면 다음에 성공하는 실행까지 남은 얼굴이 인물 목록에 보인다.
             // deleteAllFaceData 는 NonCancellable 이라 취소(10분 제한) 중에도 끝난다.
-            if (!settings.facesEnabledNow()) index.deleteAllFaceData()
+            // 정리가 실패해도 앞의 원래 예외(원인)가 로그에 남게 덧붙인다. 앞이 성공했으면 정리 예외를 그대로 던진다
+            try {
+                if (!settings.facesEnabledNow()) index.deleteAllFaceData()
+            } catch (e: Exception) {
+                failure?.addSuppressed(e) ?: throw e
+            }
         }
     }
 
     /** 얼굴을 분석할 수 있고, 사용자가 켜 둔 상태인가. */
     private fun wantFaces() = vision.facesAvailable && settings.facesEnabledNow()
-
-    /**
-     * 모델 교체(INDEX_VERSION 올림) 재색인이 남았는가. 실패(버전 0)는 빼고 본다:
-     * 계속 실패하는 사진 하나 때문에 새 인물이 영영 안 생기면 안 된다.
-     */
-    private fun isMigrating(states: Map<Long, IndexedState>) =
-        states.values.any { it.version in 1 until INDEX_VERSION }
-
 
     /** 한 번 훑기. 분석한 사진 수를 돌려준다. */
     private suspend fun indexOnce(
@@ -175,6 +176,14 @@ class IndexNewPhotosUseCase @Inject constructor(
          * 그래서 차원이 같은 모델로 바꿔도 재색인 중에 옛 공간 벡터와 섞이지 않는다.
          */
         const val INDEX_VERSION = 1
+
+        /**
+         * 모델 교체(INDEX_VERSION 올림) 재색인이 남았는가. 실패(버전 0)는 빼고 본다:
+         * 계속 실패하는 사진 하나 때문에 새 인물이 영영 안 생기면 안 된다. current 는 테스트용(지금 버전이 1 이라).
+         */
+        internal fun isMigrating(states: Map<Long, IndexedState>, current: Int = INDEX_VERSION) =
+            states.values.any { it.version in 1 until current }
+
         private const val BATCH = 50
         private const val MAX_PASSES = 3     // 계속 사진이 생겨도 한 실행이 끝없이 돌지 않게
     }
