@@ -68,7 +68,7 @@ class FindSimilarPhotosUseCase @Inject constructor(
 
     private suspend fun <T> cpu(block: () -> T): T = withContext(Dispatchers.Default) { block() }
 
-    /** 사진 선택기·촬영 URI 로 검색. */
+    /** 사진 선택기 URI 로 검색. */
     suspend operator fun invoke(uri: String, mode: ImageSearchMode): SimilarResult {
         val frame = source.load(uri) ?: return SimilarResult.UnreadableQuery
         return invoke(frame, mode)

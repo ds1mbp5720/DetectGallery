@@ -25,7 +25,7 @@ sealed interface SearchIntent {
     data object SubmitKeyword : SearchIntent
     data class QuickKeyword(val text: String) : SearchIntent          // 칩: SearchScreen 의 QUICK 목록
     data class ImageModeChanged(val mode: ImageSearchMode) : SearchIntent
-    data class QueryImage(val uri: String) : SearchIntent             // 사진 선택기·촬영
+    data class QueryImage(val uri: String) : SearchIntent             // 사진 선택기
     data class ShowSensitivity(val show: Boolean) : SearchIntent
     data class SensitivityChanged(val value: Sensitivity) : SearchIntent
     data class FaceChosen(val face: DetectedFace) : SearchIntent

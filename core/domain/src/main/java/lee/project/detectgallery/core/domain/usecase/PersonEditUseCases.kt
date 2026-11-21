@@ -29,7 +29,10 @@ class SplitPersonUseCase @Inject constructor(private val persons: PersonReposito
     }
 }
 
-/** 사람 얼굴이 아니거나(오검출) 묶을 필요 없는 얼굴을 뺀다. 다시 배정·검색되지 않는다. 뺀 개수를 돌려준다. */
+/**
+* 사람 얼굴이 아니거나(오검출) 묶을 필요 없는 얼굴을 뺀다. 다시 배정·검색되지 않는다. 뺀 개수를 돌려준다.
+* 그 사진의 얼굴 태그(웃는·단체·셀카)는 다시 계산하지 않는다: 오검출 얼굴로 붙은 태그는 사진이 다시 분석될 때까지 남는다.
+**/
 class ExcludeFacesUseCase @Inject constructor(
     private val persons: PersonRepository,
     private val index: PhotoIndexRepository,

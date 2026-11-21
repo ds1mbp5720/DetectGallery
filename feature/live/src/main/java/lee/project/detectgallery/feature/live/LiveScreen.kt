@@ -105,6 +105,8 @@ private val TEXT_SHADOW = Shadow(Color.Black.copy(alpha = 0.6f), Offset(0f, 1f),
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
+    // ponytail: state 를 통째로 읽어 검출 결과마다(15~30fps) 화면 전체가 다시 그려진다.
+    // 끊김이 보이면 detections 만 DetectionOverlay 안에서(그리기 단계) 읽게 나눈다.
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
