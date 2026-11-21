@@ -28,8 +28,8 @@ class PrefsSettingsRepository @Inject constructor(
         state.value = v
         prefs.edit().putFloat(KEY_PERSON, v.person).putFloat(KEY_SCENE, v.scene).apply()
     }
-
-    private val faces = MutableStateFlow(prefs.getBoolean(KEY_FACES, true))
+    // 처음에는 꺼 둔다: 얼굴 특징값은 생체정보에 가까워, 사용자가 인물 탭에서 설명을 보고 켤 때만 만든다
+    private val faces = MutableStateFlow(prefs.getBoolean(KEY_FACES, false))
     override val facesEnabled: Flow<Boolean> = faces.asStateFlow()
     override fun facesEnabledNow() = faces.value
 

@@ -22,8 +22,9 @@ import lee.project.detectgallery.core.domain.port.VisionEncoder
 data class PeopleUiState(
     val people: List<Person> = emptyList(),
     val mergeSource: Person? = null,     // 길게 누른 인물. 다음에 누른 인물로 합친다
-    val facesEnabled: Boolean = true,
-    val confirmDisable: Boolean = false, // 끄기 확인 대화상자 (데이터를 지우므로 확인을 받는다)
+    val facesEnabled: Boolean = false,
+    // 켜기(true)·끄기(false) 확인 대화상자. 켜기는 얼굴 분석 동의, 끄기는 데이터 삭제 확인
+    val confirmFaces: Boolean? = null,
     val faceState: FaceAnalysisState? = null,   // null = 현황 첫 값 전
     val notice: String? = null,                  // 합치기·켜기/끄기 실패 안내 (스낵바)
 )
@@ -33,8 +34,8 @@ sealed interface PeopleIntent {
     data class MergeInto(val target: Person) : PeopleIntent
     data object CancelMerge : PeopleIntent
     data class ToggleFaces(val enabled: Boolean) : PeopleIntent
-    data object ConfirmDisable : PeopleIntent
-    data object CancelDisable : PeopleIntent
+    data object ConfirmFaces : PeopleIntent
+    data object CancelFaces : PeopleIntent
     data object NoticeShown : PeopleIntent
 }
 
@@ -49,7 +50,7 @@ class PeopleViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val mergeSource = MutableStateFlow<Person?>(null)
-    private val confirmDisable = MutableStateFlow(false)
+    private val confirmFaces = MutableStateFlow<Boolean?>(null)
     private val notice = MutableStateFlow<String?>(null)
 
     /** 사진 수 많은 순. 이름을 붙이면 키워드 검색에서 그 이름으로 찾을 수 있다. */
@@ -59,7 +60,7 @@ class PeopleViewModel @Inject constructor(
             persons.persons(),
             mergeSource,
             settings.facesEnabled,
-            confirmDisable.combine(notice, ::Pair),
+            confirmFaces.combine(notice, ::Pair),
             // 현황 첫 값(갤러리 수, 약 0.5초)을 기다리느라 인물 목록이 늦게 뜨지 않게 null 로 먼저 시작한다
             indexStatus.library.map<LibraryStatus, LibraryStatus?> { it }.onStart { emit(null) },
         ) { people, source, enabled, (confirm, msg), lib ->
@@ -95,22 +96,15 @@ class PeopleViewModel @Inject constructor(
                 }
             }
 
-            is PeopleIntent.ToggleFaces -> {
-                if (intent.enabled) {
-                    launchSafely(TOGGLE_FAILED) {
-                        setFaceFeature(true)
-                    }
-                } else {
-                    confirmDisable.value = true
-                }
+            // 켜기·끄기 모두 확인을 받는다 (켜기 = 얼굴 분석 동의, 끄기 = 얼굴 데이터·이름 삭제)
+            is PeopleIntent.ToggleFaces ->  confirmFaces.value = intent.enabled
+            PeopleIntent.ConfirmFaces -> {
+                val on = confirmFaces.value ?: return
+                confirmFaces.value = null
+                launchSafely(TOGGLE_FAILED) { setFaceFeature(on) }
             }
 
-            PeopleIntent.ConfirmDisable -> {
-                confirmDisable.value = false
-                launchSafely(TOGGLE_FAILED) { setFaceFeature(false) }
-            }
-
-            PeopleIntent.CancelDisable -> confirmDisable.value = false
+            PeopleIntent.CancelFaces  -> confirmFaces.value = false
             PeopleIntent.NoticeShown -> notice.value = null
         }
     }

@@ -78,7 +78,7 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
                     .fillMaxSize()
                     .padding(32.dp), contentAlignment = Alignment.Center
             ) {
-                Text("인물 기능이 꺼져 있어요. 얼굴을 분석하지 않고 얼굴 데이터도 보관하지 않아요.")
+                Text("인물 기능이 꺼져 있어요. 얼굴을 분석하지 않고 얼굴 데이터도 보관하지 않아요. 위에서 켜면 같은 사람끼리 묶어 보여 드려요.")
             }
             return@Column
         }
@@ -184,33 +184,61 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
         }
     }
 
-    if (state.confirmDisable) {
-        AlertDialog(
-            onDismissRequest = { vm.onIntent(PeopleIntent.CancelDisable) },
-            title = { Text("인물 기능을 끌까요?") },
-            text = { Text("저장된 얼굴 데이터와 붙인 이름이 모두 지워져요. 다시 켜면 사진을 처음부터 다시 분석해요.") },
+    when (state.confirmFaces) {
+        // 켜기: 무엇을 만들고 어디에 두는지 알리고 동의를 받는다 (처음에는 꺼져 있다)
+        true -> AlertDialog(
+            onDismissRequest = { vm.onIntent(PeopleIntent.CancelFaces) },
+            title = { Text("인물 기능을 켤까요?") },
+            text = {
+                Text(
+                    "사진 속 얼굴을 분석해 얼굴 특징값을 이 기기에만 저장하고, 같은 사람끼리 묶어요. " +
+                            "사진과 얼굴 데이터는 기기 밖으로 나가지 않고, 끄면 모두 지워져요.",
+                )
+            },
             confirmButton = {
-                // 되돌릴 수 없는 삭제라 빨간 글자로 구분한다. 다른 대화상자의 확인 버튼은 그대로 파랑
-                TextButton(
-                    onClick = { vm.onIntent(PeopleIntent.ConfirmDisable) },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) { Text("끄고 지우기") }
+                TextButton(onClick = { vm.onIntent(PeopleIntent.ConfirmFaces) }) {
+                    Text(
+                        "켜기"
+                    )
+                }
             },
             dismissButton = {
-                TextButton(onClick = { vm.onIntent(PeopleIntent.CancelDisable) }) {
+                TextButton(onClick = { vm.onIntent(PeopleIntent.CancelFaces) }) {
                     Text(
                         "취소"
                     )
                 }
             },
         )
-        // 실패 안내. 이 화면은 NavHost 의 Box 안에 놓이므로 화면 크기만큼 펼친 뒤 아래쪽에 붙인다
-        SnackbarHost(
-            snackbar, Modifier
-                .fillMaxSize()
-                .wrapContentHeight(Alignment.Bottom)
+
+        false -> AlertDialog(
+            onDismissRequest = { vm.onIntent(PeopleIntent.CancelFaces) },
+            title = { Text("인물 기능을 끌까요?") },
+            text = { Text("저장된 얼굴 데이터와 붙인 이름이 모두 지워져요. 다시 켜면 사진을 처음부터 다시 분석해요.") },
+            confirmButton = {
+                // 되돌릴 수 없는 삭제라 빨간 글자로 구분한다. 다른 대화상자의 확인 버튼은 그대로 파랑
+                TextButton(
+                    onClick = { vm.onIntent(PeopleIntent.ConfirmFaces) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("끄고 지우기") }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.onIntent(PeopleIntent.CancelFaces) }) {
+                    Text(
+                        "취소"
+                    )
+                }
+            },
         )
+
+        null -> {}
     }
+    // 실패 안내. 이 화면은 NavHost 의 Box 안에 놓이므로 화면 크기만큼 펼친 뒤 아래쪽에 붙인다
+    SnackbarHost(
+        snackbar, Modifier
+            .fillMaxSize()
+            .wrapContentHeight(Alignment.Bottom)
+    )
 }
 
 /**
