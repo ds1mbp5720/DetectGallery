@@ -32,8 +32,8 @@ data class PhotoRef(val mediaId: Long, val dateTaken: Long, val generation: Long
 /** 기기 앨범(MediaStore BUCKET). "분석할 앨범 고르기" 목록 한 줄. coverMediaId = 그 앨범의 가장 최근 사진. */
 data class Album(val id: Long, val name: String, val count: Int, val coverMediaId: Long)
 
-/** 색인에 저장된 사진별 상태. version 0 = 분석 실패(재시도 대상). */
 /**
+ * 색인에 저장된 사진별 상태. version 0 = 분석 실패(재시도 대상).
  * facesDone = 이 사진의 얼굴 분석을 마쳤는가. 인물 기능이 꺼져 있었거나 얼굴 모델이 없을 때 분석한 사진은 false.
  * 기능을 켜거나 모델을 넣으면 false 인 사진만 다시 분석된다 (전체 재색인·버전 올리기가 필요 없다).
  */
@@ -41,8 +41,9 @@ data class IndexedState(val generation: Long, val version: Int, val facesDone: B
 
 data class DetectedFace(
     val box: Box,
-    val vector: FloatArray,      // L2 정규화된 얼굴 임베딩
+    val vector: FloatArray,      // L2 정규화된 얼굴 임베딩 (눈 기준 수평 정렬 뒤, C3)
     val smiling: Float?,         // 0..1, 검출기가 못 주면 null
+    val lowQuality: Boolean = false,   // 옆얼굴·작은 얼굴. 검색·배정에는 쓰고 새 인물·중심 계산에는 쓰지 않는다 (C3)
 )
 
 data class Label(val name: String, val confidence: Float)

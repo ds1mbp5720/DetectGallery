@@ -18,12 +18,12 @@ fun dot(a: FloatArray, b: FloatArray): Float {
  * L2 정규화 1024차원에서 float 내적과의 차이는 보통 0.001 안팎 (VectorMathTest).
  */
 fun dot(a: FloatArray, b: IndexedVector): Float {
-        require(a.size == b.size) { "차원 불일치 ${a.size} != ${b.size}: 모델이 바뀌었으면 재색인 필요" }
-        val q = b.q
-        var s = 0f
-        for (i in a.indices) s += a[i] * q[i]
-        return s * b.scale
-    }
+    require(a.size == b.size) { "차원 불일치 ${a.size} != ${b.size}: 모델이 바뀌었으면 재색인 필요" }
+    val q = b.q
+    var s = 0f
+    for (i in a.indices) s += a[i] * q[i]
+    return s * b.scale
+}
 
 fun l2Normalize(v: FloatArray): FloatArray {
     var sum = 0f
@@ -50,16 +50,27 @@ fun rankByBestMatch(
         // 모델 교체로 재색인 중이면 옛 차원 벡터가 섞여 있다 → 예외 대신 건너뛴다
         if (c.size != dim) continue
         val score = queries.maxOf { dot(it, c) }
-        if (score >= threshold && score > (best[c.mediaId] ?: Float.NEGATIVE_INFINITY)) best[c.mediaId] = score
+        if (score >= threshold && score > (best[c.mediaId]
+                ?: Float.NEGATIVE_INFINITY)
+        ) best[c.mediaId] = score
     }
-    return best.entries.sortedByDescending { it.value }.take(topK).map { PhotoMatch(it.key, it.value) }
+    return best.entries.sortedByDescending { it.value }.take(topK)
+        .map { PhotoMatch(it.key, it.value) }
 }
 
 /** 가장 가까운 인물 중심. threshold 미만이면 null. 차원이 다른 중심(모델 교체 전)은 건너뛴다. */
 fun nearest(v: FloatArray, centers: List<PersonCenter>, threshold: Float): Long? {
-    val best = centers.filter { it.vector.size == v.size }.maxByOrNull { dot(v, it.vector) } ?: return null
+    val best =
+        centers.filter { it.vector.size == v.size }.maxByOrNull { dot(v, it.vector) } ?: return null
     return best.personId.takeIf { dot(v, best.vector) >= threshold }
 }
+
+/**
+ * 인물 중심: 좋은 얼굴(저품질 아님)의 평균. 좋은 얼굴이 하나도 없는 인물(합치기·나누기로 생김)만 전부의 평균 (C3).
+ * faces = (벡터, 저품질) 쌍. 비어 있으면 null.
+ */
+fun personCenter(faces: List<Pair<FloatArray, Boolean>>): FloatArray? =
+    meanNormalized(faces.filterNot { it.second }.ifEmpty { faces }.map { it.first })
 
 /** 같은 차원 벡터들의 평균을 정규화. 인물 중심 재계산용. 비어 있으면 null. */
 fun meanNormalized(vectors: List<FloatArray>): FloatArray? {

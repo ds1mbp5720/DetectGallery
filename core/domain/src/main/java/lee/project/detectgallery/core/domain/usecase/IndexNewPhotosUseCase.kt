@@ -69,6 +69,8 @@ class IndexNewPhotosUseCase @Inject constructor(
         }
     }
 
+    private fun FloatArray.allFinite() = all { it.isFinite() }
+
     /** 얼굴을 분석할 수 있고, 사용자가 켜 둔 상태인가. */
     private fun wantFaces() = vision.facesAvailable && settings.facesEnabledNow()
 
@@ -152,10 +154,16 @@ class IndexNewPhotosUseCase @Inject constructor(
             // 실패를 "얼굴 없음"으로 삼키면 재색인 때 기존 얼굴·인물 연결이 영영 사라진다.
             val withFaces = wantFaces()
             val faces = if (withFaces) vision.faces(frame) else emptyList()
+            val scene = vision.scene(frame)
+            // 모델이 NaN·무한대를 내면 실패로 둔다(다음 실행에 재시도). 저장하면 검색 캐시·인물 배정·중심까지 번진다
+            if (!scene.allFinite() || faces.any { !it.vector.allFinite() }) return PhotoAnalysis(
+                ref,
+                failed = true
+            )
             PhotoAnalysis(
                 ref = ref,
                 dHash = dHash(frame),
-                scene = vision.scene(frame),
+                scene = scene,
                 faces = faces,
                 facesDone = withFaces,
                 labels = vision.labels(frame) + stateTags(frame, faces),
@@ -175,11 +183,11 @@ class IndexNewPhotosUseCase @Inject constructor(
          * 벡터·인물 중심에도 이 값이 함께 저장되고, 검색·배정은 현재 버전 것만 쓴다.
          * 그래서 차원이 같은 모델로 바꿔도 재색인 중에 옛 공간 벡터와 섞이지 않는다.
          */
-        const val INDEX_VERSION = 1
+        const val INDEX_VERSION = 2   // 2: 얼굴 정렬(C3). 정렬 전후 얼굴 벡터는 섞지 않는다
 
         /**
          * 모델 교체(INDEX_VERSION 올림) 재색인이 남았는가. 실패(버전 0)는 빼고 본다:
-         * 계속 실패하는 사진 하나 때문에 새 인물이 영영 안 생기면 안 된다. current 는 테스트용(지금 버전이 1 이라).
+         * 계속 실패하는 사진 하나 때문에 새 인물이 영영 안 생기면 안 된다. current 는 테스트용.
          */
         internal fun isMigrating(states: Map<Long, IndexedState>, current: Int = INDEX_VERSION) =
             states.values.any { it.version in 1 until current }

@@ -23,7 +23,11 @@ class FindSimilarPhotosUseCase @Inject constructor(
     private val source: PhotoSource,
     private val settings: SettingsRepository,
 ) {
-    suspend operator fun invoke(query: ImageFrame, mode: ImageSearchMode, topK: Int = 100): SimilarResult {
+    suspend operator fun invoke(
+        query: ImageFrame,
+        mode: ImageSearchMode,
+        topK: Int = 100
+    ): SimilarResult {
         val s = settings.currentSensitivity()
         return when (mode) {
             ImageSearchMode.SCENE -> {
@@ -32,9 +36,11 @@ class FindSimilarPhotosUseCase @Inject constructor(
                 val min = effectiveThreshold(Thresholds.SCENE, s.scene)
                 SimilarResult.Matches(cpu { rankByBestMatch(listOf(q), candidates, min, topK) })
             }
+
             ImageSearchMode.PERSON -> when {
-                !settings.facesEnabledNow() -> SimilarResult.FacesDisabled
+                // 모델 없음이 먼저(faceAnalysisState·인물 탭과 같은 순서): 모델이 없으면 인물 탭 스위치가 막혀 "켜세요" 는 갈 곳이 없다
                 !vision.facesAvailable -> SimilarResult.FaceModelUnavailable
+                !settings.facesEnabledNow() -> SimilarResult.FacesDisabled
                 else -> {
                     val faces = vision.faces(query)
                     when (faces.size) {
@@ -45,13 +51,17 @@ class FindSimilarPhotosUseCase @Inject constructor(
                     }
                 }
             }
+
             ImageSearchMode.DUPLICATE -> {
                 val hashes = index.dHashes()
                 SimilarResult.Matches(cpu {
                     val q = dHash(query)
                     hashes.mapNotNull { (id, h) ->
                         val d = hamming(q, h)
-                        if (d <= Thresholds.DUPLICATE_MAX_HAMMING) PhotoMatch(id, 1f - d / 64f) else null
+                        if (d <= Thresholds.DUPLICATE_MAX_HAMMING) PhotoMatch(
+                            id,
+                            1f - d / 64f
+                        ) else null
                     }.sortedByDescending { it.score }.take(topK)
                 })
             }
@@ -63,7 +73,14 @@ class FindSimilarPhotosUseCase @Inject constructor(
         if (!settings.facesEnabledNow()) return SimilarResult.FacesDisabled   // 얼굴 고르는 사이 꺼졌을 수 있다
         val candidates = index.faceVectors()
         val min = effectiveThreshold(Thresholds.PERSON, settings.currentSensitivity().person)
-        return SimilarResult.Matches(cpu { rankByBestMatch(listOf(face.vector), candidates, min, topK) })
+        return SimilarResult.Matches(cpu {
+            rankByBestMatch(
+                listOf(face.vector),
+                candidates,
+                min,
+                topK
+            )
+        })
     }
 
     private suspend fun <T> cpu(block: () -> T): T = withContext(Dispatchers.Default) { block() }

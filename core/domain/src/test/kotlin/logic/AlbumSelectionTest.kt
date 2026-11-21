@@ -25,10 +25,10 @@ class AlbumSelectionTest {
     }
 
     @Test
-    fun `사라진 앨범은 빠지고 전부면 모든 앨범`() {
+    fun `사라진 앨범은 빠지고 고른 선택은 접지 않는다`() {
         assertEquals(setOf(2L), visibleSelection(setOf(2L, 9L), all))
         assertNull(visibleSelection(emptySet(), all))
-        assertNull(visibleSelection(all, all))
+        assertEquals(all, visibleSelection(all, all))   // 고른 앨범 = 지금 앨범 전부여도 "모든 앨범" 이 아니다
     }
 
     @Test

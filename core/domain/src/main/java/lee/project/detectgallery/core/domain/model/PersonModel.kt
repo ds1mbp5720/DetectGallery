@@ -3,7 +3,8 @@ package lee.project.detectgallery.core.domain.model
 // ── 인물 ──
 data class FaceRow(
     val id: Long,
-    val vector: FloatArray
+    val vector: FloatArray,
+    val lowQuality: Boolean = false
 )
 
 data class PersonCenter(

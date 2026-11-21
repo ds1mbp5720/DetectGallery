@@ -44,8 +44,9 @@ class IndexNewPhotosUseCaseTest {
     private class FakeVision(
         override val facesAvailable: Boolean = true,
         val faceFails: Boolean = false,
+        val sceneVector: FloatArray = floatArrayOf(1f, 0f),
     ) : VisionEncoder {
-        override suspend fun scene(frame: ImageFrame) = floatArrayOf(1f, 0f)
+        override suspend fun scene(frame: ImageFrame) = sceneVector
         override suspend fun faces(frame: ImageFrame): List<DetectedFace> =
             if (faceFails) error("일시 오류") else emptyList()
 
@@ -115,9 +116,11 @@ class IndexNewPhotosUseCaseTest {
     }
 
     /** 미배정 얼굴 하나, 맞는 인물 없음. 새 인물 생성 횟수를 센다 (B6). */
-    private class CountingPersons : PersonRepository by NoPersons {
+    private class CountingPersons(val lowQuality: Boolean = false) : PersonRepository by NoPersons {
         var created = 0
-        override suspend fun unassignedFaces() = listOf(FaceRow(1, floatArrayOf(1f, 0f)))
+        override suspend fun unassignedFaces() =
+            listOf(FaceRow(1, floatArrayOf(1f, 0f), lowQuality))
+
         override suspend fun create(center: FloatArray): Long = (++created).toLong()
     }
 
@@ -130,13 +133,6 @@ class IndexNewPhotosUseCaseTest {
         assertEquals(1, persons.created)
     }
 
-    /** 미배정 얼굴 하나, 맞는 인물 없음. 새 인물 생성 횟수를 센다 (B6). */
-    private class CountingPersons : PersonRepository by NoPersons {
-        var created = 0
-        override suspend fun unassignedFaces() = listOf(FaceRow(1, floatArrayOf(1f, 0f)))
-        override suspend fun create(center: FloatArray): Long = (++created).toLong()
-    }
-
     @Test
     fun `옛 버전으로 성공한 사진이 있으면 재색인 중, 실패(0)만 있으면 아니다`() {
         assertTrue(IndexNewPhotosUseCase.isMigrating(mapOf(1L to IndexedState(1, 1)), current = 2))
@@ -144,18 +140,43 @@ class IndexNewPhotosUseCaseTest {
         assertFalse(IndexNewPhotosUseCase.isMigrating(mapOf(1L to IndexedState(1, 2)), current = 2))
     }
 
+    @Test
+    fun `저품질 얼굴은 맞는 인물이 없어도 새 인물을 만들지 않는다`() = runTest {
+        val persons = CountingPersons(lowQuality = true)
+        AssignPersonsUseCase(persons).invoke()
+        assertEquals(0, persons.created)
+    }
+
+    @Test
+    fun `재색인이 없으면 맞는 인물이 없는 얼굴로 새 인물을 만든다`() = runTest {
+        val persons = CountingPersons()
+        useCase(FakeSource(listOf(PhotoRef(1, 100, 1))), FakeIndex(), persons = persons).invoke()
+        assertTrue(persons.created > 0)   // invoke·indexOnce 의 createNew = !migrating 이 뒤집히면 0
+    }
+
+    @Test
+    fun `장면 벡터에 NaN 이 있으면 실패로 저장해 다음에 재시도한다`() = runTest {
+        val index = FakeIndex()
+        useCase(
+            FakeSource(listOf(PhotoRef(1, 100, 1))),
+            index,
+            FakeVision(sceneVector = floatArrayOf(Float.NaN, 0f))
+        ).invoke()
+        assertTrue(index.saved.single().failed)
+    }
 
     private fun useCase(
         source: PhotoSource,
         index: PhotoIndexRepository,
         vision: VisionEncoder = FakeVision(),
         settings: SettingsRepository = FakeSettings(),
+        persons: PersonRepository = NoPersons,
     ) = IndexNewPhotosUseCase(
         source,
         vision,
         index,
-        NoPersons,
-        AssignPersonsUseCase(NoPersons),
+        persons,
+        AssignPersonsUseCase(persons),
         settings
     )
 

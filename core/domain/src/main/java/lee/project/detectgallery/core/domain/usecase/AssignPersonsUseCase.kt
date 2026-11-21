@@ -12,6 +12,7 @@ import javax.inject.Inject
  * 인물이 없는 얼굴을 가장 가까운 인물에 붙이고, 없으면 새 인물을 만든다. 결과는 한 번에 저장.
  * createNew = false 면 맞는 인물이 없는 얼굴은 미배정으로 둔다. 모델 교체 재색인 중에는 아직 옛 중심인 인물(이름 포함)이
  * 후보에서 빠져 있어, 새로 만들면 같은 사람이 이름 인물과 새 인물로 갈린다. 재색인이 끝나면 다시 배정된다.
+ * 저품질 얼굴(옆얼굴·작은 얼굴, C3)은 맞는 인물에 붙기만 하고 새 인물을 만들지 않는다 → 1회성 잡인물이 줄어든다.
  */
 class AssignPersonsUseCase @Inject constructor(private val persons: PersonRepository) {
     suspend operator fun invoke(createNew: Boolean = true) {
@@ -19,7 +20,7 @@ class AssignPersonsUseCase @Inject constructor(private val persons: PersonReposi
         val assignments = mutableListOf<Pair<Long, Long>>()
         for (face in persons.unassignedFaces()) {
             val personId = nearest(face.vector, centers, Thresholds.PERSON)
-                ?: if (createNew) persons.create(face.vector).also { centers += PersonCenter(it, face.vector) } else continue
+                ?: if (createNew && !face.lowQuality) persons.create(face.vector).also { centers += PersonCenter(it, face.vector) } else continue
             assignments += face.id to personId
         }
         // 한 트랜잭션으로 저장 (1만 개를 개별로 하면 수십 초). 비어 있어도 부른다:
@@ -28,6 +29,7 @@ class AssignPersonsUseCase @Inject constructor(private val persons: PersonReposi
     }
 }
 // ponytail: 새 인물의 중심은 첫 얼굴. 색인이 끝날 때 recomputeCenters 가 소속 얼굴 평균으로 바꾼다.
+// 붙을 인물이 없는 저품질 얼굴은 미배정으로 남아 실행마다 다시 비교된다(가볍다). 많아지면 시도 표시를 둔다.
 // 오분류가 잦으면 DBSCAN 등으로. 사용자의 합치기 UI 가 알고리즘 개선보다 효과가 크다.
 
 class NamePersonUseCase @Inject constructor(private val persons: PersonRepository) {
