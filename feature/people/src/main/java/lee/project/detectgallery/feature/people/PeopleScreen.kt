@@ -49,10 +49,12 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .clip(MaterialTheme.shapes.medium)
                 // 카드 전체가 토글: TalkBack 이 "인물 기능, 설명, 스위치, 켜짐" 을 한 번에 읽는다 (AlbumSheet 의 "모든 앨범" 과 같다)
-                .toggleable(value = state.facesEnabled, role = Role.Switch) {
-                    vm.onIntent(
-                        PeopleIntent.ToggleFaces(it)
-                    )
+                .toggleable(
+                    value = state.facesEnabled,
+                    enabled = state.faceModel,
+                    role = Role.Switch
+                ) {
+                    vm.onIntent(PeopleIntent.ToggleFaces(it))
                 }
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -68,10 +70,19 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
             }
             Switch(
                 checked = state.facesEnabled,
-                onCheckedChange = null
+                onCheckedChange = null,
+                enabled = state.faceModel
             )
         }
-
+        if (!state.faceModel) {
+            // 모델 없음이 꺼짐보다 먼저(faceAnalysisState 와 같은 순서): 켜도 분석할 수 없으므로 동의를 받지 않는다
+            Box(Modifier
+                .fillMaxSize()
+                .padding(32.dp), contentAlignment = Alignment.Center) {
+                Text(faceStatusText(FaceAnalysisState.ModelMissing))
+            }
+            return@Column
+        }
         if (!state.facesEnabled) {
             Box(
                 Modifier
@@ -148,7 +159,7 @@ fun PeopleScreen(onOpenPerson: (Long) -> Unit, vm: PeopleViewModel = hiltViewMod
                     if (cover != null) {
                         AsyncImage(
                             model = mediaUri(cover),
-                            contentDescription = p.name ?: "이름 없는 인물",
+                            contentDescription = null,   // 이름은 아래 글자가 읽는다 (같은 이름을 두 번 읽지 않게)
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(72.dp)

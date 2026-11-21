@@ -39,7 +39,10 @@ internal fun bindCamera(
             return@addListener
         }
         // 후면 카메라가 없는 기기(manifest 에서 camera 를 필수로 두지 않았다)에서 bindToLifecycle 은 예외를 던진다
-        val hasBack = runCatching { provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) }.getOrDefault(false)
+        val hasBack =
+            runCatching { provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) }.getOrDefault(
+                false
+            )
         if (!hasBack) {
             onNoCamera()
             return@addListener
@@ -47,14 +50,21 @@ internal fun bindCamera(
         // 프리뷰와 분석의 화면비가 다르면 화면에 보이는 범위가 달라 오버레이 박스가 어긋난다 → 둘 다 4:3
         val ratio = AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY
         val preview = Preview.Builder()
-            .setResolutionSelector(ResolutionSelector.Builder().setAspectRatioStrategy(ratio).build())
+            .setResolutionSelector(
+                ResolutionSelector.Builder().setAspectRatioStrategy(ratio).build()
+            )
             .build()
             .also { it.setSurfaceProvider(view.surfaceProvider) }
         val analysis = ImageAnalysis.Builder()
             .setResolutionSelector(
                 ResolutionSelector.Builder()
                     .setAspectRatioStrategy(ratio)
-                    .setResolutionStrategy(ResolutionStrategy(Size(640, 480), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER))
+                    .setResolutionStrategy(
+                        ResolutionStrategy(
+                            Size(640, 480),
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER
+                        )
+                    )
                     .build(),
             )
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -67,12 +77,23 @@ internal fun bindCamera(
                 proxy.close()
                 return@setAnalyzer
             }
-            val frame = proxy.use { it.toBitmap().rotate(it.imageInfo.rotationDegrees).toImageFrame(maxSide = 640) }
+            val frame = proxy.use {
+                it.toBitmap().rotate(it.imageInfo.rotationDegrees).toImageFrame(maxSide = 640)
+            }
             onFrame(LiveIntent.Frame(frame, SystemClock.uptimeMillis()))
         }
         provider.unbind(*bound.toTypedArray())   // 같은 화면이 다시 묶을 때(뷰 재생성) 옛 것만
         bound.clear()
-        provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
-        bound += listOf(preview, analysis)
+        // 기기가 이 조합(프리뷰 + 분석)을 지원하지 않으면 예외 → 메인 스레드 크래시 대신 "카메라 없음"
+        runCatching {
+            provider.bindToLifecycle(
+                owner,
+                CameraSelector.DEFAULT_BACK_CAMERA,
+                preview,
+                analysis
+            )
+        }
+            .onSuccess { bound += listOf(preview, analysis) }
+            .onFailure { onNoCamera() }
     }, ContextCompat.getMainExecutor(context))
 }

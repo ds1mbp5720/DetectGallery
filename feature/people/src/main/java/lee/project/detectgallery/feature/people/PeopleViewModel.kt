@@ -27,6 +27,7 @@ data class PeopleUiState(
     val confirmFaces: Boolean? = null,
     val faceState: FaceAnalysisState? = null,   // null = 현황 첫 값 전
     val notice: String? = null,                  // 합치기·켜기/끄기 실패 안내 (스낵바)
+    val faceModel: Boolean = true,               // 얼굴 모델이 있는가. 없으면 켜기 스위치를 막는다
 )
 
 sealed interface PeopleIntent {
@@ -76,8 +77,16 @@ class PeopleViewModel @Inject constructor(
                     personCount = people.size,
                 ),
                 notice = msg,
+                faceModel = vision.facesAvailable,
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PeopleUiState())
+            // 첫 값은 지금 설정으로: 기본값(꺼짐)으로 시작하면 켜 둔 사용자에게도 잠깐 "꺼짐" 이 보이고, 그때 누르면 켜기 동의가 뜬다
+        }.stateIn(
+            viewModelScope, SharingStarted.WhileSubscribed(5_000),
+            PeopleUiState(
+                facesEnabled = settings.facesEnabledNow(),
+                faceModel = vision.facesAvailable
+            ),
+        )
 
     fun onIntent(intent: PeopleIntent) {
         when (intent) {
@@ -97,14 +106,14 @@ class PeopleViewModel @Inject constructor(
             }
 
             // 켜기·끄기 모두 확인을 받는다 (켜기 = 얼굴 분석 동의, 끄기 = 얼굴 데이터·이름 삭제)
-            is PeopleIntent.ToggleFaces ->  confirmFaces.value = intent.enabled
+            is PeopleIntent.ToggleFaces -> confirmFaces.value = intent.enabled
             PeopleIntent.ConfirmFaces -> {
                 val on = confirmFaces.value ?: return
                 confirmFaces.value = null
                 launchSafely(TOGGLE_FAILED) { setFaceFeature(on) }
             }
 
-            PeopleIntent.CancelFaces  -> confirmFaces.value = false
+            PeopleIntent.CancelFaces -> confirmFaces.value = false
             PeopleIntent.NoticeShown -> notice.value = null
         }
     }

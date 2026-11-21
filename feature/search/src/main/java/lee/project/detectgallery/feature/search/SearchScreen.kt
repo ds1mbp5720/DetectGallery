@@ -58,6 +58,7 @@ import lee.project.detectgallery.core.ui.PhotoGrid
 import lee.project.detectgallery.core.ui.components.ChipRow
 import lee.project.detectgallery.core.ui.components.SegmentedTabs
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalFocusManager
 
 private val QUICK = listOf("음식", "바다", "하늘", "웃는", "단체", "셀카", "흔들린")
 private val IMAGE_MODES = listOf(
@@ -74,6 +75,7 @@ fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
         uri?.let { vm.onIntent(SearchIntent.QueryImage(it.toString())) }
     }
 
+    val focus = LocalFocusManager.current   // 칩으로 검색해도 키보드를 내린다 (검색 키는 SearchField 가 내린다)
     Column(Modifier.fillMaxSize()) {
         SearchField(
             value = state.query,
@@ -88,7 +90,7 @@ fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
         // 한 줄 고정. 넘치는 칩은 가로로 밀어서 본다. 바깥 Column 에 가로 여백을 주지 않아야 화면 끝까지 밀린다.
         ChipRow(
             items = QUICK,
-            onClick = { vm.onIntent(SearchIntent.QuickKeyword(it)) },
+            onClick = { focus.clearFocus(); vm.onIntent(SearchIntent.QuickKeyword(it)) },
             selected = state.query.trim()
                 .takeIf { it in QUICK },   // 검색창 글자와 같은 칩을 강조 (직접 쳐도, 칩을 눌러도 같다)
             modifier = Modifier.padding(top = 8.dp),

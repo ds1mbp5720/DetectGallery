@@ -31,8 +31,9 @@ class FaceCropTransformation(
     override suspend fun transform(input: Bitmap, size: Size): Bitmap {
         val px = (right - left) * padding
         val py = (bottom - top) * padding
-        val l = ((left - px).coerceIn(0f, 1f) * input.width).toInt()
-        val t = ((top - py).coerceIn(0f, 1f) * input.height).toInt()
+        // 박스가 사진 오른쪽·아래 끝에 붙으면 l == width 가 되어 createBitmap 이 예외를 던진다 → 마지막 픽셀까지만
+        val l = ((left - px).coerceIn(0f, 1f) * input.width).toInt().coerceAtMost(input.width - 1)
+        val t = ((top - py).coerceIn(0f, 1f) * input.height).toInt().coerceAtMost(input.height - 1)
         val r = ((right + px).coerceIn(0f, 1f) * input.width).toInt()
         val b = ((bottom + py).coerceIn(0f, 1f) * input.height).toInt()
         return Bitmap.createBitmap(input, l, t, max(1, r - l), max(1, b - t))
