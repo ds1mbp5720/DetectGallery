@@ -59,6 +59,12 @@ import lee.project.detectgallery.core.ui.components.ChipRow
 import lee.project.detectgallery.core.ui.components.SegmentedTabs
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.Surface
 
 private val QUICK = listOf("음식", "바다", "하늘", "웃는", "단체", "셀카", "흔들린")
 private val IMAGE_MODES = listOf(
@@ -76,6 +82,9 @@ fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
     }
 
     val focus = LocalFocusManager.current   // 칩으로 검색해도 키보드를 내린다 (검색 키는 SearchField 가 내린다)
+    BackHandler(enabled = state.queryUri != null) {
+        vm.onIntent(SearchIntent.ClearImage)
+    } // 뒤로 = 사진으로 찾기 끝내기
     Column(Modifier.fillMaxSize()) {
         SearchField(
             value = state.query,
@@ -91,20 +100,23 @@ fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
         ChipRow(
             items = QUICK,
             onClick = { focus.clearFocus(); vm.onIntent(SearchIntent.QuickKeyword(it)) },
-            selected = state.query.trim()
-                .takeIf { it in QUICK },   // 검색창 글자와 같은 칩을 강조 (직접 쳐도, 칩을 눌러도 같다)
+            // 검색창 글자와 같은 칩을 강조 (직접 쳐도, 칩을 눌러도 같다). 사진으로 찾는 중에는 강조하지 않는다: 결과가 키워드 결과처럼 보이지 않게
+            selected = state.query.trim().takeIf { state.queryUri == null && it in QUICK },
             modifier = Modifier.padding(top = 8.dp),
         )
-        // 사진 한 장으로 찾을 때의 기준 (검색창 오른쪽 사진 버튼). 설명 줄은 두지 않는다: 세로 공간을 아끼고,
-        // 안내는 검색 전 SearchGuide 가 한다.
-        SegmentedTabs(
-            options = IMAGE_MODES,
-            selected = state.imageMode,
-            onSelect = { vm.onIntent(SearchIntent.ImageModeChanged(it)) },
-            modifier = Modifier
-                .padding(horizontal = 20.dp)
-                .padding(top = 4.dp),
-        )
+        // 사진으로 찾는 중이면 고른 사진 카드 안에 비교 기준(인물·배경·겹치는 사진)을 둔다 (C8).
+        // 기준은 사진 검색에만 쓰이므로 키워드 검색 때는 보이지 않는다 — 늘 보이면 키워드에도 적용되는 것처럼 읽힌다
+        state.queryUri?.let { uri ->
+            QueryImageCard(
+                uri = uri,
+                mode = state.imageMode,
+                onMode = { vm.onIntent(SearchIntent.ImageModeChanged(it)) },
+                onClose = { vm.onIntent(SearchIntent.ClearImage) },
+                modifier = Modifier
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 8.dp),
+            )
+        }
 
         // 색인 진행률은 모든 탭 위의 현황 줄(LensStatusBar)이 보여 준다.
         if (state.isSearching) LinearProgressIndicator(
@@ -116,15 +128,18 @@ fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
             SearchNotice.NO_RESULTS -> Notice("맞는 사진이 없어요.")
             SearchNotice.NO_FACE_IN_QUERY -> Notice("고른 사진에서 얼굴을 찾지 못했어요. 배경·장면으로 바꿔 보세요.")
             SearchNotice.FACE_UNAVAILABLE -> Notice("인물 찾기는 아직 준비 중이에요. 배경·장면이나 겹치는 사진으로 찾아 보세요.")
-            SearchNotice.FACES_DISABLED -> Notice("인물 기능이 꺼져 있어요. 인물 탭에서 켜거나 배경·장면으로 찾아 보세요.")
+            SearchNotice.FACES_DISABLED -> Notice("인물 기능이 꺼져 있어요. 아래 인물 탭에서 켜거나 배경·장면으로 찾아 보세요.")
             SearchNotice.UNREADABLE -> Notice("사진을 열지 못했어요. 다른 사진을 골라 주세요.")
             SearchNotice.FAILED -> Notice("검색하지 못했어요. 다시 시도해 주세요.")
-            null ->
-                if (state.results.isEmpty() && !state.isSearching) SearchGuide(
-                    state.indexProgress,
+            null -> when {
+                state.results.isNotEmpty() || state.isSearching -> PhotoGrid(
+                    state.results,
                     Modifier.weight(1f)
                 )
-                else PhotoGrid(state.results, Modifier.weight(1f))
+                // 사진으로 찾는 중인데 결과도 안내도 없다 = 얼굴 고르기를 취소했다 (다른 경우는 안내가 있다)
+                state.queryUri != null -> Notice("찾을 사람을 고르지 않았어요. 인물을 다시 누르면 고를 수 있어요.")
+                else -> SearchGuide(state.indexProgress, Modifier.weight(1f))
+            }
         }
     }
 
@@ -176,7 +191,7 @@ private fun SearchField(
                 IconButton(onClick = onTune) {
                     Icon(
                         Icons.Outlined.Tune,
-                        contentDescription = "검색 민감도"
+                        contentDescription = "사진·카메라 검색 민감도"
                     )
                 }
             }
@@ -230,14 +245,71 @@ private fun SearchGuide(progress: IndexProgress?, modifier: Modifier = Modifier)
         } else {
             Text("이렇게 찾아 보세요", style = MaterialTheme.typography.titleMedium)
             Text("• 위의 칩을 누르거나 \"엄마 작년 바다\" 처럼 검색해요", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "• 검색창 오른쪽 사진 버튼으로 사진을 고르면, 위 '인물 / 배경·장면 / 겹치는 사진' 중 고른 기준으로 찾아요",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text("• 카메라 탭에서 음식·사람을 비추고 박스를 눌러요", style = MaterialTheme.typography.bodyMedium)
+        }
+        // 사진으로 찾기는 분석 중에도 알린다: 기준(인물·배경·겹치는 사진)은 사진을 고른 뒤에야 보인다 (C8)
+        Text(
+            "• 검색창 오른쪽 사진 버튼으로 사진을 고르면 비슷한 사진을 찾아요. 고른 사진 아래에서 인물·배경·겹치는 사진 중 기준을 바꿀 수 있어요",
+            style = MaterialTheme.typography.bodyMedium
+        )
+        if (progress == null) Text(
+            "• 카메라 탭에서 음식·사람을 비추고 박스를 눌러요",
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+/**
+ * 사진으로 찾는 중일 때의 카드 (C8): 고른 사진 + 무엇을 찾는지 + 비교 기준 + 끝내기(✕).
+ * 기준을 바꾸면 같은 사진으로 바로 다시 찾는다(사진을 다시 고르지 않아도 된다).
+ */
+@Composable
+private fun QueryImageCard(
+    uri: String,
+    mode: ImageSearchMode,
+    onMode: (ImageSearchMode) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // 카드는 흰 바탕 + 테두리: 회색 바탕이면 같은 회색인 기준 탭의 트랙 경계가 사라진다
+    Surface(
+        modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                AsyncImage(
+                    model = uri,
+                    contentDescription = null,   // 옆 설명 글자가 읽힌다 (같은 말을 두 번 읽지 않게)
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(MaterialTheme.shapes.small),
+                )
+                Text(
+                    when (mode) {
+                        ImageSearchMode.PERSON -> "이 사진 속 사람이 나온 사진"
+                        ImageSearchMode.SCENE -> "이 사진과 배경·장면이 비슷한 사진"
+                        ImageSearchMode.DUPLICATE -> "이 사진과 겹치는 사진"
+                    },
+                    Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                )
+                IconButton(onClick = onClose) {
+                    Icon(
+                        Icons.Outlined.Close,
+                        contentDescription = "사진으로 찾기 끝내기"
+                    )
+                }
+            }
+            SegmentedTabs(options = IMAGE_MODES, selected = mode, onSelect = onMode)
         }
     }
 }
+
 
 /** 쿼리 사진에 얼굴이 여럿일 때 찾을 사람을 고른다. 왼쪽부터 (사진 속 위치 순). */
 @Composable
@@ -294,9 +366,9 @@ private fun SensitivitySheet(value: Sensitivity, onChange: (Sensitivity) -> Unit
             .padding(horizontal = 24.dp)
             .padding(bottom = 32.dp)
     ) {
-        Text("검색 민감도", style = MaterialTheme.typography.titleMedium)
+        Text("사진·카메라 검색 민감도", style = MaterialTheme.typography.titleMedium)
         Text(
-            "결과에 다른 사진이 섞이면 엄격하게, 찾는 사진이 빠지면 느슨하게 옮겨 보세요.",
+            "사진으로 찾기와 카메라 탭에 쓰여요(키워드 검색에는 쓰이지 않아요). 결과에 다른 사진이 섞이면 엄격하게, 찾는 사진이 빠지면 느슨하게 옮겨 보세요.",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
         )
