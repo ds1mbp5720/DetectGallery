@@ -28,14 +28,14 @@ fun Bitmap.toImageFrame(maxSide: Int = 512): ImageFrame {
 fun ImageFrame.toBitmap(): Bitmap =
     Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888)
 
-fun Bitmap.rotate(degrees: Int): Bitmap =
-    if (degrees == 0) this
+/** 회전(시계 방향 degrees) 뒤 mirror 면 좌우로 뒤집는다. 전면 카메라 프레임을 화면(거울상)과 맞출 때 쓴다 (C4). */
+fun Bitmap.rotate(degrees: Int, mirror: Boolean = false): Bitmap =
+    if (degrees == 0 && !mirror) this
     else Bitmap.createBitmap(
-        this,
-        0,
-        0,
-        width,
-        height,
-        Matrix().apply { postRotate(degrees.toFloat()) },
-        true
+        this, 0, 0, width, height,
+        Matrix().apply {
+            postRotate(degrees.toFloat())
+            if (mirror) postScale(-1f, 1f)   // createBitmap 이 뒤집힌 좌표를 다시 0 부터로 옮긴다
+        },
+        true,
     )

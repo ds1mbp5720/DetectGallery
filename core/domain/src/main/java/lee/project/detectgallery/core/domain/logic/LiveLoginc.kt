@@ -51,4 +51,5 @@ fun toImagePoint(x: Float, y: Float, imageW: Int, imageH: Int, viewW: Float, vie
     val iy = (y - dy) / (imageH * scale)
     return if (ix in 0f..1f && iy in 0f..1f) ix to iy else null
 }
-// 전면 카메라는 프리뷰가 좌우 반전된다. 전면을 지원하면 box 의 x 를 1 - x 로 뒤집는다.
+// 전면 카메라(셀카 모드, C4)는 프리뷰가 좌우 반전돼 보인다. 분석 프레임을 바인딩에서 같이 뒤집어 넘기므로
+// 여기 좌표 변환은 전면·후면이 같다 (box 를 1 - x 로 뒤집지 않는다).

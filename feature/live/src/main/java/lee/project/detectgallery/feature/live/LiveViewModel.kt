@@ -37,9 +37,11 @@ class LiveViewModel @Inject constructor(
      * 프레임은 분석 스레드에서, 탭은 메인 스레드에서 오므로 잠근다.
      */
     private val recentFrames = object : LinkedHashMap<Long, ImageFrame>() {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, ImageFrame>) = size > RECENT_FRAMES
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, ImageFrame>) =
+            size > RECENT_FRAMES
     }
-    @Volatile private var detectionsTs = 0L
+    @Volatile
+    private var detectionsTs = 0L
 
     init {
         detector.results
@@ -85,19 +87,44 @@ class LiveViewModel @Inject constructor(
                 latestFrame.value = intent.frame
                 synchronized(recentFrames) { recentFrames[intent.timestampMs] = intent.frame }
                 if (_state.value.frameW != intent.frame.width || _state.value.frameH != intent.frame.height) {
-                    _state.update { it.copy(frameW = intent.frame.width, frameH = intent.frame.height) }
+                    _state.update {
+                        it.copy(
+                            frameW = intent.frame.width,
+                            frameH = intent.frame.height
+                        )
+                    }
                 }
                 detector.submit(intent.frame, intent.timestampMs)
             }
+
             is LiveIntent.Tap -> {
                 // ponytail: 객체·얼굴 결과는 서로 다른 프레임에서 올 수 있다. 마지막 결과의 프레임을 쓰고, 없으면 최신.
-                val frame = synchronized(recentFrames) { recentFrames[detectionsTs] } ?: latestFrame.value ?: return
+                val frame =
+                    synchronized(recentFrames) { recentFrames[detectionsTs] } ?: latestFrame.value
+                    ?: return
                 val target = pick(_state.value.detections, intent.x, intent.y) ?: return
                 search(frame, target)
             }
+            // 옛 카메라의 박스가 새 화면 위에 잠깐 남아 눌리지 않게 비운다. 새 프레임이 오면 다시 채워진다
+            LiveIntent.CameraSwitched -> _state.update {
+                it.copy(
+                    detections = emptyList(),
+                    preview = emptyList(),
+                    foodScene = false
+                )
+            }
+
             LiveIntent.DismissResults -> {
                 searchJob?.cancel()
-                _state.update { it.copy(selected = null, queryCrop = null, results = emptyList(), notice = null, isSearching = false) }
+                _state.update {
+                    it.copy(
+                        selected = null,
+                        queryCrop = null,
+                        results = emptyList(),
+                        notice = null,
+                        isSearching = false
+                    )
+                }
             }
             // 화면 전체를 음식 박스로 보고 검색한다 (잘라낸 장면 유사도 + 음식 장면 라벨 순위 병합)
             LiveIntent.SearchFoodScene -> {
@@ -113,18 +140,48 @@ class LiveViewModel @Inject constructor(
             // 무엇으로 검색했는지 보여 줄 썸네일. 카메라가 이미 다른 곳을 비추고 있어도 결과의 기준을 알 수 있다.
             // (검색용 crop 과 여백이 조금 달라도 보여 주기에는 충분하다)
             val thumb = frame.crop(target.box, padding = 0.1f)
-            _state.update { it.copy(selected = target, queryCrop = thumb, isSearching = true, results = emptyList(), notice = null) }
+            _state.update {
+                it.copy(
+                    selected = target,
+                    queryCrop = thumb,
+                    isSearching = true,
+                    results = emptyList(),
+                    notice = null
+                )
+            }
             try {
                 when (val r = searchFromDetection(frame, target)) {
                     is SimilarResult.Matches -> _state.update {
                         val ids = r.items.map { m -> m.mediaId }
-                        it.copy(isSearching = false, results = ids, notice = if (ids.isEmpty()) LiveNotice.NO_RESULTS else null)
+                        it.copy(
+                            isSearching = false,
+                            results = ids,
+                            notice = if (ids.isEmpty()) LiveNotice.NO_RESULTS else null
+                        )
                     }
-                    SimilarResult.NoFaceInQuery -> _state.update { it.copy(isSearching = false, notice = LiveNotice.NO_FACE) }
+
+                    SimilarResult.NoFaceInQuery -> _state.update {
+                        it.copy(
+                            isSearching = false,
+                            notice = LiveNotice.NO_FACE
+                        )
+                    }
+
                     SimilarResult.FaceModelUnavailable ->
-                        _state.update { it.copy(isSearching = false, notice = LiveNotice.FACE_UNAVAILABLE) }
+                        _state.update {
+                            it.copy(
+                                isSearching = false,
+                                notice = LiveNotice.FACE_UNAVAILABLE
+                            )
+                        }
+
                     SimilarResult.FacesDisabled ->
-                        _state.update { it.copy(isSearching = false, notice = LiveNotice.FACES_DISABLED) }
+                        _state.update {
+                            it.copy(
+                                isSearching = false,
+                                notice = LiveNotice.FACES_DISABLED
+                            )
+                        }
                     // SearchFromDetectionUseCase 가 가장 큰 얼굴로 골라 주므로 오지 않는다
                     is SimilarResult.MultipleFaces, SimilarResult.UnreadableQuery ->
                         _state.update { it.copy(isSearching = false, notice = LiveNotice.FAILED) }
@@ -139,5 +196,7 @@ class LiveViewModel @Inject constructor(
 
     override fun onCleared() = detector.close()
 
-    private companion object { const val RECENT_FRAMES = 5 }   // 640×480 ≈ 1.2MB 씩
+    private companion object {
+        const val RECENT_FRAMES = 5
+    }   // 640×480 ≈ 1.2MB 씩
 }

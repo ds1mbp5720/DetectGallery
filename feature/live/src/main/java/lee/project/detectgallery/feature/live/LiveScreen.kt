@@ -8,6 +8,8 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
@@ -61,6 +63,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -84,12 +90,12 @@ import lee.project.detectgallery.core.ui.components.NoticeCard
 import lee.project.detectgallery.core.ui.mediaUri
 import lee.project.detectgallery.core.ui.openInGallery
 import java.util.concurrent.Executors
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.UseCase
-import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Cameraswitch
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.key
+import androidx.compose.runtime.saveable.rememberSaveable
 
 /** 카메라 위 박스·라벨 색. 라벨은 이 색 바탕에 LABEL_INK 글자라 화면 밝기와 무관하게 읽힌다. */
 private val FACE_COLOR = Color(0xFF4C9AFF)
@@ -159,23 +165,50 @@ fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
         }
         return
     }
-
+// 셀카 모드(전면 카메라, C4). 회전해도 유지. 바꾸면 key 로 프리뷰를 새로 만들어 다시 묶는다(bindCamera 가 옛 것을 푼다)
+    var front by rememberSaveable { mutableStateOf(false) }
+    var hasFront by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
-        AndroidView(
-            factory = { ctx ->
-                PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
-                    .also {
-                        bindCamera(
-                            ctx, owner, it, executor, bound,
-                            onNoCamera = { noCamera = true },
-                            shouldAnalyze = { vm.state.value.selected == null },   // 결과 시트가 닫혀 있을 때만 분석
-                            onFrame = vm::onIntent,
-                        )
-                    }
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
+        key(front) {
+            AndroidView(
+                factory = { ctx ->
+                    PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
+                        .also {
+                            bindCamera(
+                                ctx, owner, it, executor, bound,
+                                front = front,
+                                onHasFront = { hasFront = it },
+                                onNoCamera = { noCamera = true },
+                                shouldAnalyze = { vm.state.value.selected == null },   // 결과 시트가 닫혀 있을 때만 분석
+                                onFrame = vm::onIntent,
+                            )
+                        }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
         DetectionOverlay(state) { x, y -> vm.onIntent(LiveIntent.Tap(x, y)) }
+
+        // 전면·후면 전환. 전면 카메라가 있는 기기에서만. 셀카로 내 얼굴을 비추고 눌러 갤러리에서 나를 찾는다
+        if (hasFront) {
+            Surface(
+                onClick = { front = !front; vm.onIntent(LiveIntent.CameraSwitched) },
+                shape = CircleShape,
+                color = SCRIM,
+                contentColor = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .size(48.dp),   // 48dp = 최소 터치 영역
+            ) {
+                Icon(
+                    Icons.Outlined.Cameraswitch,
+                    contentDescription = if (front) "후면 카메라로 바꾸기" else "셀카 모드로 바꾸기",
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
+        }
 
         // 박스가 안 뜨는 음식(한식 등)이 화면에 있으면 칩으로 검색할 수 있게 한다
         if (state.foodScene && state.detections.none { it.kind == DetectionKind.FOOD }) {
@@ -333,7 +366,7 @@ private fun ResultHeader(state: LiveUiState, selected: LiveDetection) {
 private fun noticeText(notice: LiveNotice): String = when (notice) {
     LiveNotice.NO_FACE -> "얼굴을 찾지 못했어요. 조금 더 가까이 비춰 주세요."
     LiveNotice.FACE_UNAVAILABLE -> "인물 찾기는 아직 준비 중이에요. 음식·물체 박스를 눌러 보세요."
-    LiveNotice.FACES_DISABLED -> "인물 기능이 꺼져 있어요. 인물 탭에서 켤 수 있어요."
+    LiveNotice.FACES_DISABLED -> "인물 기능이 꺼져 있어요. 아래 인물 탭에서 켤 수 있어요."
     LiveNotice.NO_RESULTS -> "갤러리에서 찾지 못했어요."
     LiveNotice.FAILED -> "검색하지 못했어요. 다시 탭해 주세요."
 }

@@ -17,7 +17,9 @@ import java.util.concurrent.ExecutorService
 
 /**
  * 프리뷰 + 분석(640px, 최신 프레임만) 바인딩. 분석 프레임은 회전을 풀어서 넘긴다.
- * 후면 카메라만 쓴다 (전면은 프리뷰가 좌우 반전돼 박스 좌표를 뒤집어야 한다). 없으면 onNoCamera.
+ * front = 전면(셀카) 카메라 (C4). 전면 프리뷰는 거울처럼 좌우가 뒤집혀 보이므로 분석 프레임도 뒤집어 넘긴다 →
+ * 박스 그리기·탭 좌표·검색용으로 잘라 낸 이미지가 모두 화면에 보이는 그대로다(좌표 변환을 따로 두지 않는다).
+ * 고른 카메라가 없으면 onNoCamera. onHasFront 로 전면 카메라가 있는지 알린다(전환 버튼을 그때만 보인다).
  */
 internal fun bindCamera(
     context: Context,
@@ -25,6 +27,8 @@ internal fun bindCamera(
     view: PreviewView,
     executor: ExecutorService,
     bound: MutableList<UseCase>,   // 이 화면이 묶은 유스케이스. 풀 때 이것만 푼다 (unbindAll 은 새로 들어온 화면 것까지 푼다)
+    front: Boolean,
+    onHasFront: (Boolean) -> Unit,
     onNoCamera: () -> Unit,
     shouldAnalyze: () -> Boolean,
     onFrame: (LiveIntent.Frame) -> Unit,
@@ -38,12 +42,13 @@ internal fun bindCamera(
             onNoCamera()
             return@addListener
         }
-        // 후면 카메라가 없는 기기(manifest 에서 camera 를 필수로 두지 않았다)에서 bindToLifecycle 은 예외를 던진다
-        val hasBack =
-            runCatching { provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) }.getOrDefault(
-                false
-            )
-        if (!hasBack) {
+
+        // 고른 카메라가 없는 기기(manifest 에서 camera 를 필수로 두지 않았다)에서 bindToLifecycle 은 예외를 던진다
+        fun has(s: CameraSelector) = runCatching { provider.hasCamera(s) }.getOrDefault(false)
+        val selector =
+            if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+        onHasFront(has(CameraSelector.DEFAULT_FRONT_CAMERA))
+        if (!has(selector)) {
             onNoCamera()
             return@addListener
         }
@@ -78,7 +83,8 @@ internal fun bindCamera(
                 return@setAnalyzer
             }
             val frame = proxy.use {
-                it.toBitmap().rotate(it.imageInfo.rotationDegrees).toImageFrame(maxSide = 640)
+                it.toBitmap().rotate(it.imageInfo.rotationDegrees, mirror = front)
+                    .toImageFrame(maxSide = 640)
             }
             onFrame(LiveIntent.Frame(frame, SystemClock.uptimeMillis()))
         }
@@ -88,7 +94,7 @@ internal fun bindCamera(
         runCatching {
             provider.bindToLifecycle(
                 owner,
-                CameraSelector.DEFAULT_BACK_CAMERA,
+                selector,
                 preview,
                 analysis
             )

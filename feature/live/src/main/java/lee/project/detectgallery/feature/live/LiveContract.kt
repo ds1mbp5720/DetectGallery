@@ -23,4 +23,5 @@ sealed interface LiveIntent {
     data class Tap(val x: Float, val y: Float) : LiveIntent      // 분석 이미지 기준 0..1
     data object DismissResults : LiveIntent
     data object SearchFoodScene : LiveIntent                     // "음식 장면" 칩
+    data object CameraSwitched : LiveIntent                      // 전면↔후면 전환 (C4). 옛 카메라의 박스·미리보기를 지운다
 }

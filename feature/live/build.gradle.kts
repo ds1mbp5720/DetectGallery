@@ -58,4 +58,5 @@ dependencies {
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
+    implementation(libs.compose.icons.extended)        // Cameraswitch (셀카 모드 버튼, C4)
 }
