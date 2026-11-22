@@ -20,6 +20,9 @@ object Thresholds {
     const val DARK_MAX_LUMA = 50f        // 0..255
     const val BLURRY_MAX_LAPLACIAN_VAR = 60f
 
+    // 카메라 분석 프레임(640px)이 이보다 흐리면 검색에 쓰지 않는다 (C5). 사진용(위, 1024px)과 해상도가 달라 따로 둔다. 출발점
+    const val LIVE_BLURRY_MAX_LAPLACIAN_VAR = 40f
+
     // 얼굴 품질 (C3). 이보다 옆을 보거나 작으면 저품질 → 새 인물·인물 중심 계산에 쓰지 않는다. 출발점, 실기기에서 조정
     const val FACE_MAX_YAW = 35f          // 도. ML Kit headEulerAngleY (좌우로 고개 돌림)
     const val FACE_GOOD_MIN_PX = 80       // 1024px 썸네일에서 얼굴 상자의 짧은 변

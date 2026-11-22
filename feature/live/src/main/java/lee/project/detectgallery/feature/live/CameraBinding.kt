@@ -3,7 +3,12 @@ package lee.project.detectgallery.feature.live
 import android.content.Context
 import android.os.SystemClock
 import android.util.Size
-import androidx.camera.core.*
+import androidx.camera.core.Camera
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
+import androidx.camera.core.UseCase
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
@@ -14,6 +19,7 @@ import androidx.lifecycle.LifecycleOwner
 import lee.project.detectgallery.core.imaging.rotate
 import lee.project.detectgallery.core.imaging.toImageFrame
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.TimeUnit
 
 /**
  * 프리뷰 + 분석(640px, 최신 프레임만) 바인딩. 분석 프레임은 회전을 풀어서 넘긴다.
@@ -29,6 +35,7 @@ internal fun bindCamera(
     bound: MutableList<UseCase>,   // 이 화면이 묶은 유스케이스. 풀 때 이것만 푼다 (unbindAll 은 새로 들어온 화면 것까지 푼다)
     front: Boolean,
     onHasFront: (Boolean) -> Unit,
+    onCamera: (Camera) -> Unit,    // 묶인 카메라. 초점·확대에 쓴다
     onNoCamera: () -> Unit,
     shouldAnalyze: () -> Boolean,
     onFrame: (LiveIntent.Frame) -> Unit,
@@ -99,7 +106,37 @@ internal fun bindCamera(
                 analysis
             )
         }
-            .onSuccess { bound += listOf(preview, analysis) }
+            .onSuccess { bound += listOf(preview, analysis); onCamera(it) }
             .onFailure { onNoCamera() }
     }, ContextCompat.getMainExecutor(context))
+}
+
+/**
+ * 화면 좌표(PreviewView 기준 px)에 초점·노출을 맞춘다 (C6). 3초 뒤 연속 자동초점으로 돌아간다.
+ * meteringPointFactory 가 센서 회전·FILL_CENTER 자르기·전면 거울상을 알아서 바꾼다.
+ * 고정초점 카메라(전면에 많다)는 노출만, 그것도 안 되면 false (표시를 하지 않는다).
+ */
+internal fun focusAt(camera: Camera, view: PreviewView, x: Float, y: Float): Boolean {
+    val point = view.meteringPointFactory.createPoint(x, y)
+    fun action(flags: Int) =
+        FocusMeteringAction.Builder(point, flags).setAutoCancelDuration(3, TimeUnit.SECONDS).build()
+
+    val chosen = listOf(
+        action(FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE),
+        action(FocusMeteringAction.FLAG_AE)
+    )
+        .firstOrNull { camera.cameraInfo.isFocusMeteringSupported(it) } ?: return false
+    camera.cameraControl.startFocusAndMetering(chosen)   // 다음 탭이 앞의 것을 취소한다(실패는 무시)
+    return true
+}
+
+/** 두 손가락 확대 (C7). 지금 배율에 곱해 기기 범위 안으로 묶는다. 다시 묶으면(전면 전환) 1배로 돌아간다. */
+internal fun zoomBy(camera: Camera, factor: Float) {
+    val z = camera.cameraInfo.zoomState.value ?: return
+    camera.cameraControl.setZoomRatio(
+        (z.zoomRatio * factor).coerceIn(
+            z.minZoomRatio,
+            z.maxZoomRatio
+        )
+    )
 }

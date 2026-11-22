@@ -2,19 +2,32 @@ package lee.project.detectgallery.feature.live
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import lee.project.detectgallery.core.domain.logic.Thresholds
 import lee.project.detectgallery.core.domain.logic.crop
 import lee.project.detectgallery.core.domain.logic.isFoodScene
+import lee.project.detectgallery.core.domain.logic.laplacianVariance
 import lee.project.detectgallery.core.domain.logic.pick
-import lee.project.detectgallery.core.domain.model.*
+import lee.project.detectgallery.core.domain.model.Box
+import lee.project.detectgallery.core.domain.model.DetectionKind
+import lee.project.detectgallery.core.domain.model.ImageFrame
+import lee.project.detectgallery.core.domain.model.ImageSearchMode
+import lee.project.detectgallery.core.domain.model.LiveDetection
+import lee.project.detectgallery.core.domain.model.SimilarResult
 import lee.project.detectgallery.core.domain.port.LiveDetector
 import lee.project.detectgallery.core.domain.port.VisionEncoder
 import lee.project.detectgallery.core.domain.usecase.FindSimilarPhotosUseCase
 import lee.project.detectgallery.core.domain.usecase.SearchFromDetectionUseCase
-import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -40,6 +53,7 @@ class LiveViewModel @Inject constructor(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, ImageFrame>) =
             size > RECENT_FRAMES
     }
+
     @Volatile
     private var detectionsTs = 0L
 
@@ -55,6 +69,8 @@ class LiveViewModel @Inject constructor(
         latestFrame.filterNotNull().sample(1_000)
             .onEach { f ->
                 if (_state.value.selected != null) return@onEach   // 결과를 보는 중에는 미리보기·음식 칩 판단도 쉰다
+                // 흐린 프레임(초점 잡는 중·흔들림)은 건너뛰고 지난 띠를 그대로 둔다: 엉뚱한 결과로 깜빡이지 않게 (C5)
+                if (laplacianVariance(f) < Thresholds.LIVE_BLURRY_MAX_LAPLACIAN_VAR) return@onEach
                 // 실패해도 다음 주기에 다시 시도한다. 바깥 .catch 는 흐름 자체를 끝내 미리보기가 영영 멈춘다.
                 val r = try {
                     findSimilar(f, ImageSearchMode.SCENE, topK = 8)
@@ -98,11 +114,9 @@ class LiveViewModel @Inject constructor(
             }
 
             is LiveIntent.Tap -> {
-                // ponytail: 객체·얼굴 결과는 서로 다른 프레임에서 올 수 있다. 마지막 결과의 프레임을 쓰고, 없으면 최신.
-                val frame =
-                    synchronized(recentFrames) { recentFrames[detectionsTs] } ?: latestFrame.value
-                    ?: return
                 val target = pick(_state.value.detections, intent.x, intent.y) ?: return
+                // ponytail: 객체·얼굴 결과는 서로 다른 프레임에서 올 수 있다. 마지막 결과의 프레임을 쓰고, 없으면 최신.
+                val frame = frameForSearch(target.box) ?: latestFrame.value ?: return
                 search(frame, target)
             }
             // 옛 카메라의 박스가 새 화면 위에 잠깐 남아 눌리지 않게 비운다. 새 프레임이 오면 다시 채워진다
@@ -132,6 +146,16 @@ class LiveViewModel @Inject constructor(
                 search(frame, LiveDetection(Box(0f, 0f, 1f, 1f), DetectionKind.FOOD, "scene", 1f))
             }
         }
+    }
+
+    /**
+     * 탭한 박스를 잘라 검색할 프레임 (C5). 박스를 만든 프레임이 먼저고, 그 자리가 흐리면(초점 잡는 중·손떨림)
+     * 최근 프레임(5장, 0.5초 안팎) 중 그 박스 자리가 가장 선명한 것을 쓴다. 그 사이 대상은 크게 움직이지 않는다.
+     */
+    private fun frameForSearch(box: Box): ImageFrame? = synchronized(recentFrames) {
+        val own = recentFrames[detectionsTs]
+        if (own != null && laplacianVariance(own.crop(box)) >= Thresholds.LIVE_BLURRY_MAX_LAPLACIAN_VAR) return own
+        recentFrames.values.maxByOrNull { laplacianVariance(it.crop(box)) } ?: own
     }
 
     private fun search(frame: ImageFrame, target: LiveDetection) {

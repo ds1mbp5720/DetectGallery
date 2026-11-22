@@ -96,6 +96,13 @@ import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.camera.core.Camera
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import lee.project.detectgallery.core.domain.logic.pick
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 /** 카메라 위 박스·라벨 색. 라벨은 이 색 바탕에 LABEL_INK 글자라 화면 밝기와 무관하게 읽힌다. */
 private val FACE_COLOR = Color(0xFF4C9AFF)
@@ -168,16 +175,27 @@ fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
 // 셀카 모드(전면 카메라, C4). 회전해도 유지. 바꾸면 key 로 프리뷰를 새로 만들어 다시 묶는다(bindCamera 가 옛 것을 푼다)
     var front by rememberSaveable { mutableStateOf(false) }
     var hasFront by remember { mutableStateOf(false) }
+    var camera by remember { mutableStateOf<Camera?>(null) }            // 초점·확대용 (C6·C7). 다시 묶으면 바뀐다
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
+    var focusRing by remember { mutableStateOf<Offset?>(null) }        // 초점을 맞춘 자리 (잠깐 표시)
+    LaunchedEffect(focusRing) {
+        if (focusRing != null) {
+            delay(600)
+            focusRing = null
+        }
+    }
     Box(Modifier.fillMaxSize()) {
         key(front) {
             AndroidView(
                 factory = { ctx ->
                     PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
-                        .also {
+                        .also { view ->
+                            previewView = view
                             bindCamera(
-                                ctx, owner, it, executor, bound,
+                                ctx, owner, view, executor, bound,
                                 front = front,
                                 onHasFront = { hasFront = it },
+                                onCamera = { camera = it },
                                 onNoCamera = { noCamera = true },
                                 shouldAnalyze = { vm.state.value.selected == null },   // 결과 시트가 닫혀 있을 때만 분석
                                 onFrame = vm::onIntent,
@@ -188,7 +206,18 @@ fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
             )
         }
 
-        DetectionOverlay(state) { x, y -> vm.onIntent(LiveIntent.Tap(x, y)) }
+        DetectionOverlay(
+            state,
+            onTap = { x, y -> vm.onIntent(LiveIntent.Tap(x, y)) },
+            // 박스가 없는 곳을 누르면 그 자리에 초점·노출 (C6). 지원하지 않는 카메라면 표시도 하지 않는다
+            onEmptyTap = { p ->
+                val c = camera
+                val v = previewView
+                if (c != null && v != null && focusAt(c, v, p.x, p.y)) focusRing = p
+            },
+            onZoom = { z -> camera?.let { zoomBy(it, z) } },
+        )
+        focusRing?.let { FocusRing(it) }
 
         // 전면·후면 전환. 전면 카메라가 있는 기기에서만. 셀카로 내 얼굴을 비추고 눌러 갤러리에서 나를 찾는다
         if (hasFront) {
@@ -388,9 +417,16 @@ private fun openAppSettings(context: Context) {
 }
 
 @Composable
-private fun DetectionOverlay(state: LiveUiState, onTap: (Float, Float) -> Unit) {
+private fun DetectionOverlay(
+    state: LiveUiState,
+    onTap: (Float, Float) -> Unit,
+    onEmptyTap: (Offset) -> Unit,
+    onZoom: (Float) -> Unit,
+) {
     val measurer = rememberTextMeasurer()
     val currentState by rememberUpdatedState(state)
+    val currentEmptyTap by rememberUpdatedState(onEmptyTap)   // pointerInput(Unit) 안에서 최신 람다를 부르게
+    val currentZoom by rememberUpdatedState(onZoom)
     val labelStyle =
         TextStyle(color = LABEL_INK, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     Canvas(
@@ -399,8 +435,9 @@ private fun DetectionOverlay(state: LiveUiState, onTap: (Float, Float) -> Unit) 
             .pointerInput(Unit) {
                 detectTapGestures { p ->
                     val s = currentState
-                    if (s.frameW == 0) return@detectTapGestures
-                    toImagePoint(
+                    // 박스를 맞혔으면 검색, 아니면(빈 곳·잘린 영역·첫 프레임 전) 초점 (C6)
+                    val hit = if (s.frameW == 0) null
+                    else toImagePoint(
                         p.x,
                         p.y,
                         s.frameW,
@@ -408,8 +445,13 @@ private fun DetectionOverlay(state: LiveUiState, onTap: (Float, Float) -> Unit) 
                         size.width.toFloat(),
                         size.height.toFloat()
                     )
-                        ?.let { (x, y) -> onTap(x, y) }
+                        ?.takeIf { (x, y) -> pick(s.detections, x, y) != null }
+                    if (hit != null) onTap(hit.first, hit.second) else currentEmptyTap(p)
                 }
+            }
+            .pointerInput(Unit) {
+                // 두 손가락 확대 (C7). 한 손가락 끌기는 zoom = 1 이라 무시되고, 탭은 위 detectTapGestures 가 받는다
+                detectTransformGestures { _, _, zoom, _ -> if (zoom != 1f) currentZoom(zoom) }
             }
             .semantics {
                 // TalkBack 은 캔버스 안 박스를 누를 수 없다 → 박스마다 "… 찾기" 동작으로 낸다 (박스 가운데를 누른 것과 같다).
@@ -473,4 +515,22 @@ private fun detectionName(d: LiveDetection): String = when (d.kind) {
     DetectionKind.FOOD -> "음식 · ${d.label}"
     DetectionKind.OBJECT -> d.label
 }
+
+/** 초점을 맞춘 자리 표시 (C6). 0.6초 뒤 사라진다. */
+@Composable
+private fun FocusRing(center: Offset) {
+    val d = 56.dp
+    Box(
+        Modifier
+            .offset {
+                IntOffset(
+                    (center.x - d.toPx() / 2).roundToInt(),
+                    (center.y - d.toPx() / 2).roundToInt()
+                )
+            }
+            .size(d)
+            .border(1.5.dp, Color.White, CircleShape),
+    )
+}
+
 // 실제 앱에서는 화면 문구를 strings.xml 로 옮긴다.
