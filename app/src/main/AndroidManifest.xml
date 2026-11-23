@@ -5,7 +5,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <!--
      ML Kit 의 사용 통계 라이브러리(datatransport)가 INTERNET·ACCESS_NETWORK_STATE 를 병합 매니페스트에 넣는다.
@@ -13,8 +15,12 @@
      Android Studio 의 Merged Manifest 탭에서 제거됐는지 확인한다 (라이브러리 버전에 따라 다름).
      P3 CLIP 모델 다운로드를 넣을 때는 INTERNET 의 remove 를 지우고 위 문구도 고친다.
    -->
-    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.INTERNET"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
     <!-- 큰 분석의 진행·완료 알림 (Android 13+ 는 실행 중 권한 요청) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 큰 분석을 포그라운드로: Android 14+ 는 유형별 권한이 필요하다 -->
@@ -22,21 +28,33 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
 
-    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
 
     <application
         android:name=".DetectGalleryApp"
-        android:label="Detect_Gallery"
-        android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:icon="@mipmap/ic_launcher"
+        android:label="Detect_Gallery"
+        android:theme="@style/Theme.DetectGallery">
 
-        <activity android:name=".MainActivity" android:exported="true">
+        <!-- singleTask: 공유로 열 때 공유한 앱의 태스크에 화면이 하나 더 쌓이지 않게. 이미 떠 있으면 onNewIntent 로 받는다 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- 다른 앱의 공유 메뉴: 사진 한 장으로 비슷한 사진 찾기 (C9). 공유 목록에 보이는 이름 -->
+            <intent-filter android:label="Detect Gallery로 찾기">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
 

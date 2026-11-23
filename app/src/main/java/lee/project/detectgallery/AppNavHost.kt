@@ -40,11 +40,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavBackStackEntry
 import android.widget.Toast
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavController
+import lee.project.detectgallery.album.AlbumPickerIntent
+import lee.project.detectgallery.album.AlbumPickerViewModel
+import lee.project.detectgallery.album.AlbumSheet
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     LIVE("live", "카메라", Icons.Outlined.PhotoCamera),
@@ -59,10 +61,26 @@ private fun tabOf(route: String?): Tab? =
 /** 이 항목이 지금 맨 위 화면인가. 이동·뒤로를 맨 위 화면에서 온 것만 받는다(연타는 첫 번째 뒤로 맨 위가 바뀌어 걸러진다). */
 private fun NavController.isTop(entry: NavBackStackEntry) = currentBackStackEntry?.id == entry.id
 
+/**
+ * @param sharedUri 다른 앱에서 공유받은 사진. 검색 탭으로 옮겨 사진으로 찾고, 받으면 onSharedConsumed(그 사진) 로 알린다.
+ */
 @Composable
-fun AppNavHost(access: GalleryAccess, statusVm: AppStatusViewModel = hiltViewModel()) {
+fun AppNavHost(
+    access: GalleryAccess,
+    sharedUri: String? = null,
+    onSharedConsumed: (String) -> Unit = {},
+    statusVm: AppStatusViewModel = hiltViewModel(),
+) {
     val nav = rememberNavController()
     val current by nav.currentBackStackEntryAsState()
+    // 공유받은 사진은 검색 탭에서 찾는다. 검색이 시작 화면이라 늘 스택 맨 아래에 있다 → 그 위(다른 탭·정리 화면)를 걷어 낸다.
+    // 그래프가 붙기 전(첫 프레임)의 pop 은 아무 일도 하지 않으므로 화면이 생긴 뒤(current != null) 한다
+    LaunchedEffect(sharedUri, current != null) {
+        if (sharedUri != null && current != null) nav.popBackStack(
+            Tab.SEARCH.route,
+            inclusive = false
+        )
+    }
     val library by statusVm.library.collectAsStateWithLifecycle()
     val requestMore = rememberGalleryRequest()
     val context = LocalContext.current
@@ -131,7 +149,7 @@ fun AppNavHost(access: GalleryAccess, statusVm: AppStatusViewModel = hiltViewMod
             if (albumSheet) AlbumSheet(albumVm, onDismiss = { albumSheet = false })
             NavHost(nav, startDestination = Tab.SEARCH.route) {
                 composable(Tab.LIVE.route) { LiveScreen() }
-                composable(Tab.SEARCH.route) { SearchScreen() }
+                composable(Tab.SEARCH.route) { SearchScreen(sharedUri = sharedUri, onSharedConsumed = onSharedConsumed) }
                 // 이동·뒤로는 그 화면이 맨 위일 때만: 두 번 누르면 상세가 두 번 쌓이고, 뒤로를 연타하면 한 화면 더 빠진다.
                 // RESUMED 로 거르면 전환 애니메이션 중(STARTED)의 자동 닫기(인물이 사라짐 → onBack)까지 막혀 빈 상세에 남는다.
                 composable(Tab.PEOPLE.route) { entry ->

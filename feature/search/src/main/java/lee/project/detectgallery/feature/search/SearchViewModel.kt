@@ -62,7 +62,14 @@ class SearchViewModel @Inject constructor(
 
             is SearchIntent.QueryImage -> {
                 // 검색창 글자는 비운다: 지금 결과가 사진으로 찾은 것이라는 게 섞여 보이지 않게
-                _state.update { it.copy(queryUri = intent.uri, query = "", faceChoices = null) }
+                _state.update {
+                    it.copy(
+                        queryUri = intent.uri,
+                        queryFromShare = intent.fromShare,
+                        query = "",
+                        faceChoices = null
+                    )
+                }
                 searchImage(intent.uri)
             }
 
@@ -71,6 +78,7 @@ class SearchViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         queryUri = null,
+                        queryFromShare = false,
                         faceChoices = null,
                         results = emptyList(),
                         notice = null,
@@ -103,7 +111,7 @@ class SearchViewModel @Inject constructor(
     /** 키워드로 찾으면 사진으로 찾기는 끝난다(사진 카드가 사라진다). 두 검색이 한 화면에 섞이지 않게 (C8) */
     private fun submitKeyword(q: String) {
         if (q.isBlank()) return
-        _state.update { it.copy(queryUri = null, faceChoices = null) }
+        _state.update { it.copy(queryUri = null, queryFromShare = false, faceChoices = null) }
         launchSearch { Outcome(byKeyword(q)) }
     }
 

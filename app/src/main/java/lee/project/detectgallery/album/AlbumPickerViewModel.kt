@@ -1,4 +1,4 @@
-package lee.project.detectgallery
+package lee.project.detectgallery.album
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

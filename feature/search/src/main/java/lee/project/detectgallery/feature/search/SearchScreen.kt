@@ -1,5 +1,8 @@
 package lee.project.detectgallery.feature.search
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -65,6 +68,8 @@ import coil.compose.AsyncImage
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 
 private val QUICK = listOf("음식", "바다", "하늘", "웃는", "단체", "셀카", "흔들린")
 private val IMAGE_MODES = listOf(
@@ -75,16 +80,31 @@ private val IMAGE_MODES = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)   // ModalBottomSheet
 @Composable
-fun SearchScreen(vm: SearchViewModel = hiltViewModel()) {
+fun SearchScreen(
+    sharedUri: String? = null,             // 다른 앱에서 공유받은 사진 (C9)
+    onSharedConsumed: (String) -> Unit = {},   // 받아 간 사진을 알린다(그사이 온 다음 공유와 헷갈리지 않게)
+    vm: SearchViewModel = hiltViewModel(),
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val picker = rememberLauncherForActivityResult(PickVisualMedia()) { uri ->
         uri?.let { vm.onIntent(SearchIntent.QueryImage(it.toString())) }
     }
-
+// 공유받은 사진은 사진 선택기로 고른 것과 같다. 한 번 넘기고 비운다: 탭을 오가거나 회전해도 다시 찾지 않게
+    LaunchedEffect(sharedUri) {
+        if (sharedUri != null) {
+            vm.onIntent(SearchIntent.QueryImage(sharedUri, fromShare = true))
+            onSharedConsumed(sharedUri)
+        }
+    }
     val focus = LocalFocusManager.current   // 칩으로 검색해도 키보드를 내린다 (검색 키는 SearchField 가 내린다)
+    // 뒤로 = 사진으로 찾기 끝내기. 공유로 들어온 사진이면 끝낸 뒤 앱도 뒤로 보내 공유한 앱으로 돌아간다 (C9).
+    // 앱을 닫지 않고(Android 12+ 의 뒤로와 같다) 카드만 비워 두므로, 나중에 다시 열어도 공유 화면이 남아 있지 않다
+    val context = LocalContext.current
     BackHandler(enabled = state.queryUri != null) {
+        val fromShare = state.queryFromShare
         vm.onIntent(SearchIntent.ClearImage)
-    } // 뒤로 = 사진으로 찾기 끝내기
+        if (fromShare) context.findActivity()?.moveTaskToBack(true)
+    }
     Column(Modifier.fillMaxSize()) {
         SearchField(
             value = state.query,
@@ -211,6 +231,13 @@ private fun SearchField(
         // 검색하면 키보드를 내린다: 앱이 화면 끝까지 그려(edge-to-edge) 키보드가 결과 그리드 아래쪽을 가린다
         keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); onSearch() }),
     )
+}
+
+/** Compose 의 LocalContext 는 Activity 를 감싼 ContextWrapper 일 수 있다. */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable

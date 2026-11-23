@@ -1,4 +1,4 @@
-package lee.project.detectgallery
+package lee.project.detectgallery.album
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
