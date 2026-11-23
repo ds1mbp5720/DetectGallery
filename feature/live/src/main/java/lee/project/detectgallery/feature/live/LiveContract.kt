@@ -19,7 +19,7 @@ data class LiveUiState(
 enum class LiveNotice { NO_FACE, FACE_UNAVAILABLE, FACES_DISABLED, NO_RESULTS, FAILED }
 
 sealed interface LiveIntent {
-    data class Frame(val frame: ImageFrame, val timestampMs: Long, val front: Boolean = false) : LiveIntent   // front: 어느 카메라 프레임인가
+    data class Frame(val frame: ImageFrame, val timestampMs: Long, val front: Boolean) : LiveIntent   // front: 어느 카메라 프레임인가. 기본값 없음: 빠뜨리면 전면에서 프레임이 모두 버려진다
     data class Tap(val x: Float, val y: Float) : LiveIntent      // 분석 이미지 기준 0..1
     data object DismissResults : LiveIntent
     data object SearchFoodScene : LiveIntent                     // "음식 장면" 칩

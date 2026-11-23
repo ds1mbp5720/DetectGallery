@@ -82,6 +82,7 @@ class LiveViewModel @Inject constructor(
                 if (_state.value.selected != null) return@onEach   // 결과를 보는 중에는 미리보기·음식 칩 판단도 쉰다
                 // 흐린 프레임(초점 잡는 중·흔들림)은 건너뛰고 지난 띠를 그대로 둔다: 엉뚱한 결과로 깜빡이지 않게 (C5)
                 if (withContext(Dispatchers.Default) { laplacianVariance(f) } < Thresholds.LIVE_BLURRY_MAX_LAPLACIAN_VAR) return@onEach
+                val since = switchedAt   // 이 주기 도중 카메라를 바꾸면 옛 장면 결과를 버린다
                 // 실패해도 다음 주기에 다시 시도한다. 바깥 .catch 는 흐름 자체를 끝내 미리보기가 영영 멈춘다.
                 val r = try {
                     findSimilar(f, ImageSearchMode.SCENE, topK = 8)
@@ -90,6 +91,7 @@ class LiveViewModel @Inject constructor(
                 } catch (e: Exception) {
                     null
                 }
+                if (switchedAt != since) return@onEach
                 if (r is SimilarResult.Matches) _state.update { it.copy(preview = r.items.map { m -> m.mediaId }) }
 
                 // 같은 주기에 화면 전체 라벨도 본다: COCO 에 없는 음식(한식 등)은 박스가 안 뜨므로 "음식 장면" 칩으로 대신한다
@@ -100,6 +102,7 @@ class LiveViewModel @Inject constructor(
                 } catch (e: Exception) {
                     false
                 }
+                if (switchedAt != since) return@onEach
                 _state.update { it.copy(foodScene = food) }
             }
             .launchIn(viewModelScope)
@@ -111,9 +114,18 @@ class LiveViewModel @Inject constructor(
                 // 결과 시트가 떠 있으면 프레임을 버린다 (CameraBinding 의 shouldAnalyze 가 먼저 거르지만 경합 대비).
                 // 박스·칩은 탭한 순간 상태로 멈춰 보이고, 시트를 닫으면 다음 프레임부터 재개된다.
                 if (_state.value.selected != null) return
-                if (intent.front != currentFront) return   // 다시 묶기 전 옛 카메라 프레임 (좌우 반전도 다르다)
-                latestFrame.value = intent.frame
-                synchronized(recentFrames) { recentFrames[intent.timestampMs] = intent.frame }
+                // 다시 묶기 전 옛 카메라 프레임은 버린다(좌우 반전도 다르다). 확인과 기록을 전환과 같은 잠금으로 묶어,
+                // 확인 직후 전환되어 옛 프레임이 새 목록에 남는 일이 없게 한다
+                val accepted = synchronized(recentFrames) {
+                    if (intent.front != currentFront) {
+                        false
+                    } else {
+                        latestFrame.value = intent.frame
+                        recentFrames[intent.timestampMs] = intent.frame
+                        true
+                    }
+                }
+                if (!accepted) return
                 if (_state.value.frameW != intent.frame.width || _state.value.frameH != intent.frame.height) {
                     _state.update {
                         it.copy(
@@ -129,19 +141,19 @@ class LiveViewModel @Inject constructor(
                 // ponytail: 화면이 본 박스와 여기 상태가 한 프레임 다를 수 있다(드묾) → 그때는 아무 일도 안 한다. 다시 누르면 된다
                 val target = pick(_state.value.detections, intent.x, intent.y) ?: return
                 // ponytail: 객체·얼굴 결과는 서로 다른 프레임에서 올 수 있다. 마지막 결과의 프레임을 쓰고, 없으면 최신.
-                viewModelScope.launch {
-                    val frame = frameForSearch(target.box) ?: latestFrame.value ?: return@launch
-                    search(frame, target)
-                }
+                startSearch(target) { frameForSearch(target.box) ?: latestFrame.value }
             }
 
 // 옛 카메라의 박스·프레임·검출기 기억을 모두 비운다. 새 프레임이 오면 다시 채워진다
             is LiveIntent.CameraSwitched -> {
                 if (intent.front == currentFront && switchedAt != 0L) return   // 같은 카메라로 다시 그린 것(회전 등)
-                currentFront = intent.front
-                switchedAt = SystemClock.uptimeMillis()
-                synchronized(recentFrames) { recentFrames.clear() }
-                latestFrame.value = null
+                synchronized(recentFrames) {
+                    currentFront = intent.front
+                    switchedAt = SystemClock.uptimeMillis()
+                    recentFrames.clear()
+                    latestFrame.value = null
+                }
+                searchJob?.cancel()   // 고르는 중이던 옛 프레임 검색 (B59)
                 detector.reset()
                 _state.update {
                     it.copy(
@@ -167,7 +179,14 @@ class LiveViewModel @Inject constructor(
             // 화면 전체를 음식 박스로 보고 검색한다 (잘라낸 장면 유사도 + 음식 장면 라벨 순위 병합)
             LiveIntent.SearchFoodScene -> {
                 val frame = latestFrame.value ?: return
-                search(frame, LiveDetection(Box(0f, 0f, 1f, 1f), DetectionKind.FOOD, "scene", 1f))
+                startSearch(
+                    LiveDetection(
+                        Box(0f, 0f, 1f, 1f),
+                        DetectionKind.FOOD,
+                        "scene",
+                        1f
+                    )
+                ) { frame }
             }
         }
     }
@@ -185,9 +204,14 @@ class LiveViewModel @Inject constructor(
         }
     }
 
-    private fun search(frame: ImageFrame, target: LiveDetection) {
+    /**
+     * 검색 하나를 searchJob 으로 돌린다. 프레임 고르기(B54)까지 같은 job 이라 새 탭·음식 칩·닫기·카메라 전환이
+     * 앞의 것을 통째로 취소한다 → 먼저 누른 탭이 늦게 끝나 결과를 덮거나, 닫은 뒤 시트가 뜨지 않는다.
+     */
+    private fun startSearch(target: LiveDetection, frameOf: suspend () -> ImageFrame?) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
+            val frame = frameOf() ?: return@launch
             // 무엇으로 검색했는지 보여 줄 썸네일. 카메라가 이미 다른 곳을 비추고 있어도 결과의 기준을 알 수 있다.
             // (검색용 crop 과 여백이 조금 달라도 보여 주기에는 충분하다)
             val thumb = frame.crop(target.box, padding = 0.1f)

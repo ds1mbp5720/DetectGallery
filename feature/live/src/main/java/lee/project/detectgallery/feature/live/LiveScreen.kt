@@ -198,6 +198,7 @@ fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
                     PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
                         .also { view ->
                             previewView = view
+                            val bindFront = front   // 이 바인딩이 연 카메라. 실패가 늦게 와도 지금 값이 아니라 이것으로 판정
                             bindCamera(
                                 ctx, owner, view, executor, bound,
                                 front = front,
@@ -205,13 +206,15 @@ fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
                                 onCamera = { camera = it },
                                 // 전면만 실패하면(이 조합을 지원하지 않는 등) 후면으로 돌아간다. 화면 전체를 막지 않게
                                 onNoCamera = {
-                                    if (front) {
-                                        front = false
-                                        Toast.makeText(
-                                            ctx,
-                                            "셀카 카메라를 열지 못해 후면 카메라로 돌아왔어요",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                                    if (bindFront) {
+                                        if (front) {   // 그사이 이미 후면으로 돌렸으면 할 일 없음
+                                            front = false
+                                            Toast.makeText(
+                                                ctx,
+                                                "셀카 카메라를 열지 못해 후면 카메라로 돌아왔어요",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
                                     } else {
                                         noCamera = true
                                     }
