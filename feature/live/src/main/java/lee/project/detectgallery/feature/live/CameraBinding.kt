@@ -93,7 +93,7 @@ internal fun bindCamera(
                 it.toBitmap().rotate(it.imageInfo.rotationDegrees, mirror = front)
                     .toImageFrame(maxSide = 640)
             }
-            onFrame(LiveIntent.Frame(frame, SystemClock.uptimeMillis()))
+            onFrame(LiveIntent.Frame(frame, SystemClock.uptimeMillis(), front))
         }
         provider.unbind(*bound.toTypedArray())   // 같은 화면이 다시 묶을 때(뷰 재생성) 옛 것만
         bound.clear()

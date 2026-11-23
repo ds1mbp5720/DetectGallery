@@ -19,9 +19,9 @@ data class LiveUiState(
 enum class LiveNotice { NO_FACE, FACE_UNAVAILABLE, FACES_DISABLED, NO_RESULTS, FAILED }
 
 sealed interface LiveIntent {
-    data class Frame(val frame: ImageFrame, val timestampMs: Long) : LiveIntent
+    data class Frame(val frame: ImageFrame, val timestampMs: Long, val front: Boolean = false) : LiveIntent   // front: 어느 카메라 프레임인가
     data class Tap(val x: Float, val y: Float) : LiveIntent      // 분석 이미지 기준 0..1
     data object DismissResults : LiveIntent
     data object SearchFoodScene : LiveIntent                     // "음식 장면" 칩
-    data object CameraSwitched : LiveIntent                      // 전면↔후면 전환 (C4). 옛 카메라의 박스·미리보기를 지운다
+    data class CameraSwitched(val front: Boolean) : LiveIntent   // 지금 카메라. 처음 그릴 때와 전환할 때 보낸다
 }

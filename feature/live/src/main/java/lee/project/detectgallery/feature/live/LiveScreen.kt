@@ -6,8 +6,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -18,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,13 +32,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -44,9 +54,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +84,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -80,6 +94,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
+import lee.project.detectgallery.core.domain.logic.pick
 import lee.project.detectgallery.core.domain.logic.toImagePoint
 import lee.project.detectgallery.core.domain.logic.toViewRect
 import lee.project.detectgallery.core.domain.model.DetectionKind
@@ -90,19 +106,7 @@ import lee.project.detectgallery.core.ui.components.NoticeCard
 import lee.project.detectgallery.core.ui.mediaUri
 import lee.project.detectgallery.core.ui.openInGallery
 import java.util.concurrent.Executors
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Cameraswitch
-import androidx.compose.material3.Icon
-import androidx.compose.runtime.key
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.camera.core.Camera
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.unit.IntOffset
-import lee.project.detectgallery.core.domain.logic.pick
 import kotlin.math.roundToInt
-import kotlinx.coroutines.delay
 
 /** 카메라 위 박스·라벨 색. 라벨은 이 색 바탕에 LABEL_INK 글자라 화면 밝기와 무관하게 읽힌다. */
 private val FACE_COLOR = Color(0xFF4C9AFF)
@@ -174,11 +178,14 @@ fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
     }
 // 셀카 모드(전면 카메라, C4). 회전해도 유지. 바꾸면 key 로 프리뷰를 새로 만들어 다시 묶는다(bindCamera 가 옛 것을 푼다)
     var front by rememberSaveable { mutableStateOf(false) }
+    // 처음 그릴 때도 보낸다: 회전·프로세스 복원 뒤 화면(front)과 ViewModel 이 같은 카메라를 기준으로 거르게
+    LaunchedEffect(front) { vm.onIntent(LiveIntent.CameraSwitched(front)) }
     var hasFront by remember { mutableStateOf(false) }
     var camera by remember { mutableStateOf<Camera?>(null) }            // 초점·확대용 (C6·C7). 다시 묶으면 바뀐다
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
     var focusRing by remember { mutableStateOf<Offset?>(null) }        // 초점을 맞춘 자리 (잠깐 표시)
-    LaunchedEffect(focusRing) {
+    var focusTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(focusTick) {
         if (focusRing != null) {
             delay(600)
             focusRing = null
@@ -196,7 +203,19 @@ fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
                                 front = front,
                                 onHasFront = { hasFront = it },
                                 onCamera = { camera = it },
-                                onNoCamera = { noCamera = true },
+                                // 전면만 실패하면(이 조합을 지원하지 않는 등) 후면으로 돌아간다. 화면 전체를 막지 않게
+                                onNoCamera = {
+                                    if (front) {
+                                        front = false
+                                        Toast.makeText(
+                                            ctx,
+                                            "셀카 카메라를 열지 못해 후면 카메라로 돌아왔어요",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        noCamera = true
+                                    }
+                                },
                                 shouldAnalyze = { vm.state.value.selected == null },   // 결과 시트가 닫혀 있을 때만 분석
                                 onFrame = vm::onIntent,
                             )
@@ -213,7 +232,10 @@ fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
             onEmptyTap = { p ->
                 val c = camera
                 val v = previewView
-                if (c != null && v != null && focusAt(c, v, p.x, p.y)) focusRing = p
+                if (c != null && v != null && focusAt(c, v, p.x, p.y)) {
+                    focusRing = p
+                    focusTick++
+                }
             },
             onZoom = { z -> camera?.let { zoomBy(it, z) } },
         )
@@ -222,14 +244,15 @@ fun LiveScreen(vm: LiveViewModel = hiltViewModel()) {
         // 전면·후면 전환. 전면 카메라가 있는 기기에서만. 셀카로 내 얼굴을 비추고 눌러 갤러리에서 나를 찾는다
         if (hasFront) {
             Surface(
-                onClick = { front = !front; vm.onIntent(LiveIntent.CameraSwitched) },
+                onClick = { front = !front; camera = null },   // 새로 묶일 때까지 옛 카메라로 초점·확대가 가지 않게
                 shape = CircleShape,
                 color = SCRIM,
                 contentColor = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(12.dp)
-                    .size(48.dp),   // 48dp = 최소 터치 영역
+                    .size(48.dp)   // 48dp = 최소 터치 영역
+                    .semantics { role = Role.Button },
             ) {
                 Icon(
                     Icons.Outlined.Cameraswitch,
@@ -425,7 +448,8 @@ private fun DetectionOverlay(
 ) {
     val measurer = rememberTextMeasurer()
     val currentState by rememberUpdatedState(state)
-    val currentEmptyTap by rememberUpdatedState(onEmptyTap)   // pointerInput(Unit) 안에서 최신 람다를 부르게
+    val currentTap by rememberUpdatedState(onTap)              // pointerInput(Unit) 안에서 최신 람다를 부르게
+    val currentEmptyTap by rememberUpdatedState(onEmptyTap)
     val currentZoom by rememberUpdatedState(onZoom)
     val labelStyle =
         TextStyle(color = LABEL_INK, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -446,7 +470,7 @@ private fun DetectionOverlay(
                         size.height.toFloat()
                     )
                         ?.takeIf { (x, y) -> pick(s.detections, x, y) != null }
-                    if (hit != null) onTap(hit.first, hit.second) else currentEmptyTap(p)
+                    if (hit != null) currentTap(hit.first, hit.second) else currentEmptyTap(p)
                 }
             }
             .pointerInput(Unit) {

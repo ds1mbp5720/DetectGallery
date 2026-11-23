@@ -32,6 +32,9 @@ interface VisionEncoder {
 interface LiveDetector {
     val results: Flow<LiveFrameResult>
     fun submit(frame: ImageFrame, timestampMs: Long)
+
+    /** 카메라 전환(C4): 검출기가 기억하는 마지막 박스를 비운다. 새 결과에 옛 카메라 박스가 섞이지 않게 */
+    fun reset()
     fun close()
 }
 
