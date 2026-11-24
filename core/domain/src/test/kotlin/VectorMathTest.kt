@@ -4,6 +4,8 @@ import lee.project.detectgallery.core.domain.model.IndexedVector
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertNull
 
 class VectorMathTest {
     private fun unit(rnd: Random, dim: Int) =
@@ -24,6 +26,15 @@ class VectorMathTest {
     @Test
     fun `0 벡터는 내적 0`() {
         assertEquals(0f, dot(FloatArray(4) { 0.5f }, IndexedVector(1, FloatArray(4))), 0f)
+    }
+
+    @Test
+    fun `인물 중심은 좋은 얼굴만 평균하고, 좋은 얼굴이 없으면 전부를 평균한다`() {
+        val good = floatArrayOf(1f, 0f)
+        val low = floatArrayOf(0f, 1f)
+        assertArrayEquals(good, personCenter(listOf(good to false, low to true)), 1e-6f)
+        assertArrayEquals(low, personCenter(listOf(low to true)), 1e-6f)
+        assertNull(personCenter(emptyList()))
     }
 
     @Test
