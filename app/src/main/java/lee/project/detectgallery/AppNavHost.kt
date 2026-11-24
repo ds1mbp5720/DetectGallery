@@ -1,6 +1,10 @@
 package lee.project.detectgallery
 
 import androidx.compose.foundation.layout.Column
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import lee.project.detectgallery.core.ui.findActivity
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -84,6 +88,20 @@ fun AppNavHost(
     val library by statusVm.library.collectAsStateWithLifecycle()
     val requestMore = rememberGalleryRequest()
     val context = LocalContext.current
+    // 검색 첫 화면에서 뒤로 = 앱 닫기 확인 (C11). 뒤로 처리는 나중에 등록된 것이 먼저라 이 처리는 맨 마지막 차례다:
+    // 사진 카드가 있으면 SearchScreen 의 뒤로(끝내기·공유한 앱으로)가, 다른 탭·하위 화면이면 NavHost 의 뒤로(검색으로)가 먼저 받는다
+    var confirmExit by rememberSaveable { mutableStateOf(false) }   // 회전해도 열린 채
+    BackHandler(enabled = current?.destination?.route == Tab.SEARCH.route) { confirmExit = true }
+    if (confirmExit) {
+        ExitDialog(
+            indexing = library?.indexing == true,
+            onDismiss = { confirmExit = false },
+            onExit = {
+                confirmExit = false
+                context.findActivity()?.finishAndRemoveTask()
+            },
+        )
+    }
     var accessMenu by remember { mutableStateOf(false) }   // 사진 범위 메뉴 열림
     var albumSheet by rememberSaveable { mutableStateOf(false) }   // 분석할 앨범 고르기 시트 (회전해도 열린 채)
     val albumVm: AlbumPickerViewModel =
@@ -149,7 +167,12 @@ fun AppNavHost(
             if (albumSheet) AlbumSheet(albumVm, onDismiss = { albumSheet = false })
             NavHost(nav, startDestination = Tab.SEARCH.route) {
                 composable(Tab.LIVE.route) { LiveScreen() }
-                composable(Tab.SEARCH.route) { SearchScreen(sharedUri = sharedUri, onSharedConsumed = onSharedConsumed) }
+                composable(Tab.SEARCH.route) {
+                    SearchScreen(
+                        sharedUri = sharedUri,
+                        onSharedConsumed = onSharedConsumed
+                    )
+                }
                 // 이동·뒤로는 그 화면이 맨 위일 때만: 두 번 누르면 상세가 두 번 쌓이고, 뒤로를 연타하면 한 화면 더 빠진다.
                 // RESUMED 로 거르면 전환 애니메이션 중(STARTED)의 자동 닫기(인물이 사라짐 → onBack)까지 막혀 빈 상세에 남는다.
                 composable(Tab.PEOPLE.route) { entry ->
@@ -162,6 +185,23 @@ fun AppNavHost(
             }
         }
     }
+}
+
+/**
+ * 앱 닫기 확인 (C11). 닫으면 화면과 최근 앱 항목만 없앤다(finishAndRemoveTask) — 프로세스는 죽이지 않는다:
+ * 사진 분석은 WorkManager 가 알림과 함께 이어서 하고 끝나면 완료 알림이 뜬다. 다음에 열면 검색 첫 화면부터.
+ */
+@Composable
+private fun ExitDialog(indexing: Boolean, onDismiss: () -> Unit, onExit: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("앱을 닫을까요?") },
+        text = if (indexing) {
+            { Text("사진 분석은 앱을 닫아도 알림과 함께 계속돼요.") }
+        } else null,
+        confirmButton = { TextButton(onClick = onExit) { Text("닫기") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+    )
 }
 
 /**

@@ -1,12 +1,11 @@
 package lee.project.detectgallery.feature.search
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
@@ -35,23 +35,29 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import lee.project.detectgallery.core.domain.model.DetectedFace
 import lee.project.detectgallery.core.domain.model.ImageSearchMode
 import lee.project.detectgallery.core.domain.model.IndexProgress
@@ -60,16 +66,7 @@ import lee.project.detectgallery.core.ui.FaceThumb
 import lee.project.detectgallery.core.ui.PhotoGrid
 import lee.project.detectgallery.core.ui.components.ChipRow
 import lee.project.detectgallery.core.ui.components.SegmentedTabs
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.material3.Surface
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
+import lee.project.detectgallery.core.ui.findActivity
 
 private val QUICK = listOf("음식", "바다", "하늘", "웃는", "단체", "셀카", "흔들린")
 private val IMAGE_MODES = listOf(
@@ -231,13 +228,6 @@ private fun SearchField(
         // 검색하면 키보드를 내린다: 앱이 화면 끝까지 그려(edge-to-edge) 키보드가 결과 그리드 아래쪽을 가린다
         keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); onSearch() }),
     )
-}
-
-/** Compose 의 LocalContext 는 Activity 를 감싼 ContextWrapper 일 수 있다. */
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
 }
 
 @Composable
