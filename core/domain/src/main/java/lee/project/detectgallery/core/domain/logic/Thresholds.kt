@@ -14,6 +14,11 @@ object Thresholds {
     const val SEMANTIC = 0.2f            // CLIP 텍스트↔이미지 점수는 낮게 분포한다
     const val DUPLICATE_MAX_HAMMING = 5
 
+    /**
+     * 겹치는 사진 판정에 쓰는 dHash 의 1 인 비트 하한(상한은 64 − 이 값). 밝기 차이가 없는 사진끼리 거리 ≤ MAX_HAMMING 으로
+     * 묶이지 않게 하는 최소값 = MAX_HAMMING + 1. 휴리스틱 — 실기기의 검은 화면·야경으로 보정 (hasDetail, C9·C10)
+     */
+    const val DUPLICATE_MIN_DETAIL_BITS = 6
     const val SMILING = 0.7f
     const val GROUP_MIN_FACES = 3
     const val SELFIE_MIN_FACE_AREA = 0.12f

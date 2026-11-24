@@ -132,6 +132,48 @@ class MediaStorePhotoSource @Inject constructor(
     }
 
     /**
+     * 스크린샷 폴더의 사진 (C10). 기기마다 폴더가 달라(DCIM/Screenshots, Pictures/Screenshots) 경로에 "Screenshot" 이 든 것을 고른다.
+     * ML Kit 의 Screenshot 라벨보다 정확하고 분석을 기다리지 않는다. SQLite LIKE 는 영문 대소문자를 가리지 않는다.
+     */
+    override suspend fun screenshots(): List<Long> = withContext(Dispatchers.IO) {
+        val (albumWhere, albumArgs) = albumFilter(settings.albumsNow())
+        val where = listOfNotNull(
+            "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+            albumWhere
+        ).joinToString(" AND ") { "($it)" }
+        val args = arrayOf("%Screenshot%") + (albumArgs ?: emptyArray())
+        val cursor = resolver.query(
+            collection,
+            arrayOf(MediaStore.Images.Media._ID),
+            where,
+            args,
+            "${MediaStore.Images.Media._ID} DESC"
+        )
+            ?: throw IllegalStateException("MediaStore 조회 실패")
+        cursor.use { c -> buildList { while (c.moveToNext()) add(c.getLong(0)) } }
+    }
+
+    /** 사진별 화소 수 (C10). 크기 정보가 없는 사진(드묾)은 0 이다. */
+    override suspend fun pixelCounts(): Map<Long, Long> = withContext(Dispatchers.IO) {
+        val (where, args) = albumFilter(settings.albumsNow())
+        val cols = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.WIDTH,
+            MediaStore.Images.Media.HEIGHT
+        )
+        val cursor = resolver.query(collection, cols, where, args, null)
+            ?: throw IllegalStateException("MediaStore 조회 실패")
+        cursor.use { c ->
+            buildMap {
+                while (c.moveToNext()) put(
+                    c.getLong(0),
+                    c.getLong(1) * c.getLong(2)
+                )
+            }
+        }
+    }
+
+    /**
      * 원본을 maxSide 로 줄여 디코딩한다. loadThumbnail 은 쓰지 않는다:
      * 요청 크기와 무관하게 시스템이 캐시한 썸네일(기기에 따라 512px 안팎)을 돌려주고 키우지는 않아서,
      * 1024px 를 요청해도 단체 사진의 작은 얼굴이 40px 하한 아래로 떨어진다.

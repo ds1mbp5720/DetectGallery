@@ -56,9 +56,11 @@ class FindSimilarPhotosUseCase @Inject constructor(
                 val hashes = index.dHashes()
                 SimilarResult.Matches(cpu {
                     val q = dHash(query)
-                    hashes.mapNotNull { (id, h) ->
+                    // 밝기 차이가 없는 사진(검은 화면·단색)은 서로 다른 사진끼리 해시가 겹친다 → 쿼리·후보 모두 뺀다 (정리 모드와 같은 판정)
+                    if (!hasDetail(q)) emptyList()
+                    else hashes.mapNotNull { (id, h) ->
                         val d = hamming(q, h)
-                        if (d <= Thresholds.DUPLICATE_MAX_HAMMING) PhotoMatch(
+                        if (d <= Thresholds.DUPLICATE_MAX_HAMMING && hasDetail(h)) PhotoMatch(
                             id,
                             1f - d / 64f
                         ) else null

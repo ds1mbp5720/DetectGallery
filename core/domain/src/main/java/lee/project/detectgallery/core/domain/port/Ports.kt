@@ -14,6 +14,12 @@ interface PhotoSource {
 
     /** 앱이 볼 수 있는 사진의 앨범 전부, 사진 많은 순. 앨범 선택과 무관하게 센다(고르는 화면용). */
     suspend fun albums(): List<Album>
+
+    /** 스크린샷 폴더의 사진, 최신순 (정리 모드 C10). refs() 와 같은 범위(고른 앨범). */
+    suspend fun screenshots(): List<Long>
+
+    /** 사진별 화소 수(가로×세로). 겹치는 사진 중 남길 것을 고를 때 쓴다 (C10). refs() 와 같은 범위. */
+    suspend fun pixelCounts(): Map<Long, Long>
 }
 
 /** 색인·사진 쿼리용 정밀 분석. 구현: MediaPipe + ML Kit + TFLite (:core:ml). */

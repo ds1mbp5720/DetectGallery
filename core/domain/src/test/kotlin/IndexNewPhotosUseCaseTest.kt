@@ -39,6 +39,9 @@ class IndexNewPhotosUseCaseTest {
         override suspend fun load(uri: String, maxSide: Int): ImageFrame? = null
         override suspend fun albums() =
             emptyList<lee.project.detectgallery.core.domain.model.Album>()
+
+        override suspend fun screenshots() = emptyList<Long>()
+        override suspend fun pixelCounts() = emptyMap<Long, Long>()
     }
 
     private class FakeVision(

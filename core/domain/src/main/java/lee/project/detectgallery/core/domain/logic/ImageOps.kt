@@ -35,7 +35,9 @@ fun dHash(frame: ImageFrame): Long {
         val y1 = maxOf(y0 + 1, (gy + 1) * frame.height / 8)
         var sum = 0L
         var n = 0
-        for (y in y0 until y1) for (x in x0 until x1) { sum += luma(frame.argb[y * frame.width + x]); n++ }
+        for (y in y0 until y1) for (x in x0 until x1) {
+            sum += luma(frame.argb[y * frame.width + x]); n++
+        }
         gray[gy * 9 + gx] = (sum / n).toInt()
     }
     var h = 0L
@@ -46,6 +48,13 @@ fun dHash(frame: ImageFrame): Long {
 }
 
 fun hamming(a: Long, b: Long): Int = java.lang.Long.bitCount(a xor b)
+
+/**
+ * dHash 에 무늬가 있는가. 밝기 차이가 거의 없는 사진(검은 화면·단색·아주 어두운 야경)은 1 인 비트가 0 근처(또는 64 근처)로 몰려
+ * 서로 다른 사진끼리 "겹치는 사진" 이 된다 → 겹치는 사진 판정(검색 FindSimilarPhotosUseCase·정리 groupDuplicates)에서 뺀다.
+ */
+fun hasDetail(hash: Long): Boolean =
+    java.lang.Long.bitCount(hash) in Thresholds.DUPLICATE_MIN_DETAIL_BITS..(64 - Thresholds.DUPLICATE_MIN_DETAIL_BITS)
 
 fun meanLuma(f: ImageFrame): Float {
     var s = 0L
