@@ -46,7 +46,7 @@ internal object IndexNotifications {
     fun progress(context: Context, done: Int, total: Int): ForegroundInfo {
         ensureChannels(context)
         val notification = NotificationCompat.Builder(context, CHANNEL_PROGRESS)
-            .setSmallIcon(R.drawable.ic_stat_index)
+            .setSmallIcon(R.drawable.ic_stat_name)
             .setContentTitle("사진 분석 중")
             .setContentText("이번 분석 ${fmt(done)} / ${fmt(total)}장")   // 이번 실행 기준. 현황 줄(장면)·인물 탭(얼굴)의 누적 숫자와 다를 수 있다
             .setProgress(total, done, false)
@@ -72,7 +72,7 @@ internal object IndexNotifications {
         ) return
         ensureChannels(context)
         val notification = NotificationCompat.Builder(context, CHANNEL_DONE)
-            .setSmallIcon(R.drawable.ic_stat_index)
+            .setSmallIcon(R.drawable.ic_stat_name)
             .setContentTitle("사진 분석이 끝났어요")
             .setContentText("누르면 앱에서 바로 찾아볼 수 있어요.")   // 인물 기능이 꺼졌거나 모델이 없을 수 있어 "인물" 을 약속하지 않는다
             .setAutoCancel(true)
