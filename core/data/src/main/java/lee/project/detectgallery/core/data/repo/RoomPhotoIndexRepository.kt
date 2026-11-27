@@ -59,13 +59,21 @@ class RoomPhotoIndexRepository @Inject constructor(
                     )
                 }
                 val excluded = matched.map { it?.excluded ?: false }
+                // C12: 재분석 때 위치를 못 읽은 사진(권한 회수·일시 오류)은 내용이 그대로면 읽어 둔 위치를 지킨다 — null 로 덮어 지우지 않게
+                val knownLoc = toSave.filter { !it.locationRead }.map { it.ref.mediaId }
+                    .chunked(500).flatMap { dao.locationsOf(it) }.associateBy { it.mediaId }
                 dao.replace(
                     photos = toSave.map {
+                        val keep =
+                            knownLoc[it.ref.mediaId]?.takeIf { k -> k.generation == it.ref.generation }
                         PhotoEntity(
                             it.ref.mediaId, it.ref.dateTaken, it.ref.generation, it.dHash,
                             indexVersion = if (it.failed) 0 else version,
                             facesDone = !it.failed && it.facesDone,
                             vectorVersion = if (it.failed) 0 else version,
+                            lat = if (keep != null) keep.lat else it.location?.lat,
+                            lon = if (keep != null) keep.lon else it.location?.lon,
+                            locRead = keep?.locRead ?: (!it.failed && it.locationRead),
                         )
                     },
                     scenes = scenes.map { (id, v) -> SceneEmbeddingEntity(id, v) },
@@ -136,6 +144,29 @@ class RoomPhotoIndexRepository @Inject constructor(
     override suspend fun photosByLabels(labels: List<String>) = dao.byLabels(labels)
     override suspend fun photosInRange(range: LongRange) =
         dao.inRange(range.first, range.last + 1).toSet()
+
+    override suspend fun momentPhotos() = dao.momentRows(INDEX_VERSION).map {
+        MomentPhoto(
+            it.mediaId,
+            it.dateTaken,
+            if (it.lat != null && it.lon != null) GeoPoint(it.lat, it.lon) else null
+        )
+    }
+
+    override suspend fun labelsOf(names: Set<String>) =
+        dao.labelRows(names.toList()).groupBy({ it.mediaId }, { it.label })
+            .mapValues { it.value.toSet() }
+
+    override suspend fun locationPending() = dao.locationPending()
+    override suspend fun saveLocations(read: Map<Long, GeoPoint?>) {
+        if (read.isNotEmpty()) dao.setLocations(read.map { (id, p) ->
+            LocationUpdate(
+                id,
+                p?.lat,
+                p?.lon
+            )
+        })
+    }
 
     override suspend fun indexStates() =
         dao.states()

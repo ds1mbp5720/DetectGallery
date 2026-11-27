@@ -42,6 +42,15 @@ class IndexNewPhotosUseCaseTest {
 
         override suspend fun screenshots() = emptyList<Long>()
         override suspend fun pixelCounts() = emptyMap<Long, Long>()
+
+        // 실제 소스처럼: 권한이 없으면 못 읽음(Unavailable), 있으면 사진별 값(기본 위치 없음)
+        var canRead = true
+        val locById = mutableMapOf<Long, lee.project.detectgallery.core.domain.model.LocationRead>()
+        override suspend fun location(mediaId: Long) =
+            if (!canRead) lee.project.detectgallery.core.domain.model.LocationRead.Unavailable
+            else locById[mediaId] ?: lee.project.detectgallery.core.domain.model.LocationRead.None
+
+        override fun canReadLocation() = canRead
     }
 
     private class FakeVision(
@@ -71,6 +80,7 @@ class IndexNewPhotosUseCaseTest {
                     !it.failed && it.facesDone
                 )
             }
+            batch.filter { !it.failed && !it.locationRead }.forEach { pendingLoc += it.ref.mediaId }
         }
 
         override suspend fun delete(ids: Set<Long>) {
@@ -85,6 +95,16 @@ class IndexNewPhotosUseCaseTest {
         override suspend fun photosInRange(range: LongRange) = emptySet<Long>()
         override suspend fun deleteAllFaceData() {}
         override suspend fun invalidateFaceCache() {}
+        override suspend fun momentPhotos() =
+            emptyList<lee.project.detectgallery.core.domain.model.MomentPhoto>()
+
+        override suspend fun labelsOf(names: Set<String>) = emptyMap<Long, Set<String>>()
+        val pendingLoc = mutableListOf<Long>()
+        val savedLoc = mutableMapOf<Long, lee.project.detectgallery.core.domain.model.GeoPoint?>()
+        override suspend fun locationPending() = pendingLoc.toList()
+        override suspend fun saveLocations(read: Map<Long, lee.project.detectgallery.core.domain.model.GeoPoint?>) {
+            savedLoc += read; pendingLoc -= read.keys
+        }
     }
 
     private class FakeSettings(var faces: Boolean = true) : SettingsRepository {
@@ -125,6 +145,44 @@ class IndexNewPhotosUseCaseTest {
             listOf(FaceRow(1, floatArrayOf(1f, 0f), lowQuality))
 
         override suspend fun create(center: FloatArray): Long = (++created).toLong()
+    }
+
+    @Test
+    fun `위치는 분석 결과에 담긴다`() = runTest {
+        val p = lee.project.detectgallery.core.domain.model.GeoPoint(37.5, 127.0)
+        val index = FakeIndex()
+        val source = FakeSource(listOf(PhotoRef(1, 100, 1))).apply {
+            locById[1] = lee.project.detectgallery.core.domain.model.LocationRead.Found(p)
+        }
+        useCase(source, index).invoke()
+        assertEquals(p, index.saved.single().location)
+        assertTrue(index.saved.single().locationRead)
+        assertTrue(index.pendingLoc.isEmpty())
+    }
+
+    @Test
+    fun `못 읽은 위치는 권한이 생긴 뒤 실행 끝에 위치만 다시 읽고, 또 못 읽으면 남겨 둔다`() = runTest {
+        val p = lee.project.detectgallery.core.domain.model.GeoPoint(37.5, 127.0)
+        val index = FakeIndex()
+        val source =
+            FakeSource(listOf(PhotoRef(1, 100, 1), PhotoRef(2, 200, 1))).apply { canRead = false }
+        useCase(source, index).invoke()
+        assertTrue(index.saved.none { it.locationRead })   // 권한 없음 → 못 읽음 → "읽음" 이 아니다
+        assertEquals(setOf(1L, 2L), index.pendingLoc.toSet())
+        assertTrue(index.savedLoc.isEmpty())                 // 권한이 없으면 다시 읽지도 않는다
+        // 권한이 생겼다. 1번은 위치를 찾고, 2번은 일시 오류
+        source.canRead = true
+        source.locById[1] = lee.project.detectgallery.core.domain.model.LocationRead.Found(p)
+        source.locById[2] = lee.project.detectgallery.core.domain.model.LocationRead.Unavailable
+        useCase(source, index).invoke()
+        assertEquals(mapOf(1L to p), index.savedLoc)
+        assertEquals(listOf(2L), index.pendingLoc)           // 못 읽은 사진은 "위치 없음" 으로 저장하지 않고 남긴다
+        // 다음 실행: 2번은 위치가 없는 사진 → null 로 저장(읽음)
+        source.locById[2] = lee.project.detectgallery.core.domain.model.LocationRead.None
+        useCase(source, index).invoke()
+        assertEquals(mapOf(1L to p, 2L to null), index.savedLoc)
+        assertTrue(index.pendingLoc.isEmpty())
+        assertEquals(2, index.saved.size)                    // 다시 분석하지 않았다
     }
 
     @Test

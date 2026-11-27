@@ -9,6 +9,8 @@ import lee.project.detectgallery.core.domain.model.ImageFrame
 import lee.project.detectgallery.core.domain.model.PhotoRef
 import lee.project.detectgallery.core.domain.port.PhotoSource
 import lee.project.detectgallery.core.imaging.toImageFrame
+import lee.project.detectgallery.core.domain.model.GeoPoint
+import lee.project.detectgallery.core.domain.model.LocationRead
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,6 +28,9 @@ import lee.project.detectgallery.core.domain.model.Album
 import lee.project.detectgallery.core.domain.port.SettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flatMapLatest
+import android.content.pm.PackageManager
+import android.Manifest
+import androidx.exifinterface.media.ExifInterface
 
 /** minSdk 30 전제 (GENERATION_MODIFIED 열). */
 class MediaStorePhotoSource @Inject constructor(
@@ -172,6 +177,32 @@ class MediaStorePhotoSource @Inject constructor(
             }
         }
     }
+
+
+    /**
+     * 사진 EXIF 의 위도·경도 (C12). Android 10+ 는 ACCESS_MEDIA_LOCATION 이 있어야 원본(setRequireOriginal)에서 위치를 준다.
+     * MediaStore 의 LATITUDE·LONGITUDE 열은 Android 10 부터 비어 있어 쓰지 않는다. EXIF 는 파일 앞부분만 읽어 한 장 수 ms.
+     * 권한이 없거나 일시 오류(IO)면 Unavailable — "위치 없음" 으로 저장하지 않고 나중에 다시 읽는다.
+     */
+    override suspend fun location(mediaId: Long): LocationRead = withContext(Dispatchers.IO) {
+        if (!canReadLocation()) return@withContext LocationRead.Unavailable
+        try {
+            val uri = MediaStore.setRequireOriginal(ContentUris.withAppendedId(collection, mediaId))
+            val stream =
+                resolver.openInputStream(uri) ?: return@withContext LocationRead.Unavailable
+            val ll = stream.use { ExifInterface(it).latLong }
+            ll?.let { GeoPoint(it[0], it[1]) }?.takeIf { it.isValid }
+                ?.let { LocationRead.Found(it) } ?: LocationRead.None
+        } catch (e: java.io.FileNotFoundException) {
+            LocationRead.None          // 그사이 지워진 사진: 다시 읽을 것이 없다 (색인 정리가 지운다)
+        } catch (e: Exception) {
+            LocationRead.Unavailable   // 권한 회수·일시 IO 오류 → 다음 실행
+        }
+    }
+
+    override fun canReadLocation() =
+        +context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
+
 
     /**
      * 원본을 maxSide 로 줄여 디코딩한다. loadThumbnail 은 쓰지 않는다:

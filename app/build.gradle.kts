@@ -45,7 +45,7 @@ android {
 
 dependencies {
     listOf(":core:domain", ":core:imaging", ":core:data", ":core:ml", ":core:ui",
-        ":feature:live", ":feature:search", ":feature:people").forEach { implementation(project(it)) }
+        ":feature:live", ":feature:search", ":feature:people", ":feature:moment").forEach { implementation(project(it)) }
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

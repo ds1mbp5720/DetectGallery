@@ -13,6 +13,7 @@ import lee.project.detectgallery.core.domain.port.VisionEncoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.yield
 import lee.project.detectgallery.core.domain.model.IndexedState
+import lee.project.detectgallery.core.domain.model.LocationRead
 import javax.inject.Inject
 
 /**
@@ -51,6 +52,7 @@ class IndexNewPhotosUseCase @Inject constructor(
             assignPersons(createNew = !isMigrating(index.indexStates()))
             persons.recomputeCenters(force = false)   // 방금 새 인물이 생겼으면(낡음 표시) 첫 얼굴 중심을 평균으로
             persons.deleteOrphans()
+            fillMissingLocations(onProgress)   // C12: 권한을 나중에 허용했거나 일시 오류였던 사진의 위치만
         } catch (e: Throwable) {
             failure = e
             throw e
@@ -70,6 +72,30 @@ class IndexNewPhotosUseCase @Inject constructor(
     }
 
     private fun FloatArray.allFinite() = all { it.isFinite() }
+
+    /**
+     * 위치를 아직 못 읽은 사진의 위치만 다시 읽는다 (C12). 권한이 없으면 아무것도 하지 않는다.
+     * 사진 권한을 업데이트 전에 허용해 위치 권한이 나중에 생긴 사용자, 일시 오류였던 사진이 대상이다.
+     * EXIF 앞부분만 읽어 1만 장도 금방이다. 200장씩 저장해 중간에 끊겨도 이어서 한다.
+     * 진행 수는 분석과 같은 onProgress 로 보낸다 — 알림이 멈춰 보이지 않고, 추억 탭은 끝날 때 다시 묶는다.
+     */
+    private suspend fun fillMissingLocations(onProgress: suspend (Int, Int) -> Unit) {
+        if (!source.canReadLocation()) return
+        val pending = index.locationPending()
+        if (pending.isEmpty()) return
+        var done = 0
+        onProgress(0, pending.size)
+        for (chunk in pending.chunked(200)) {
+            val read = chunk.associateWith { source.location(it) }
+                .filterValues { it != LocationRead.Unavailable }
+            // 200장을 하나도 못 읽었으면(원본 읽기가 늘 막히는 기기·권한이 그사이 사라짐) 이번 실행은 멈춘다 — 실행마다 1만 장을 헛읽지 않게
+            if (read.isEmpty()) break
+            index.saveLocations(read.mapValues { (it.value as? LocationRead.Found)?.point })
+            done += chunk.size
+            onProgress(done, pending.size)
+            yield()
+        }
+    }
 
     /** 얼굴을 분석할 수 있고, 사용자가 켜 둔 상태인가. */
     private fun wantFaces() = vision.facesAvailable && settings.facesEnabledNow()
@@ -160,6 +186,8 @@ class IndexNewPhotosUseCase @Inject constructor(
                 ref,
                 failed = true
             )
+            val loc =
+                source.location(ref.mediaId)   // C12. 권한이 없거나 일시 오류면 Unavailable → 실행 끝에 다시 읽는다
             PhotoAnalysis(
                 ref = ref,
                 dHash = dHash(frame),
@@ -167,6 +195,8 @@ class IndexNewPhotosUseCase @Inject constructor(
                 faces = faces,
                 facesDone = withFaces,
                 labels = vision.labels(frame) + stateTags(frame, faces),
+                location = (loc as? LocationRead.Found)?.point,
+                locationRead = loc != LocationRead.Unavailable,
             )
         } catch (e: CancellationException) {
             throw e

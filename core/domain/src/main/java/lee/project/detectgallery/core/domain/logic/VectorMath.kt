@@ -25,6 +25,14 @@ fun dot(a: FloatArray, b: IndexedVector): Float {
     return s * b.scale
 }
 
+/** 캐시 벡터끼리의 내적 (둘 다 int8). 위치 메우기(C12)처럼 정밀도보다 속도가 중요한 비교용. */
+fun dot(a: IndexedVector, b: IndexedVector): Float {
+    require(a.size == b.size) { "차원 불일치 ${a.size} != ${b.size}: 모델이 바뀌었으면 재색인 필요" }
+    var s = 0
+    for (i in 0 until a.size) s += a.q[i] * b.q[i]
+    return s * a.scale * b.scale
+}
+
 fun l2Normalize(v: FloatArray): FloatArray {
     var sum = 0f
     for (x in v) sum += x * x

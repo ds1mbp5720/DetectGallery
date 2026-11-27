@@ -48,17 +48,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.navigation.NavBackStackEntry
 import android.widget.Toast
 import androidx.annotation.RequiresApi
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavController
 import lee.project.detectgallery.album.AlbumPickerIntent
 import lee.project.detectgallery.album.AlbumPickerViewModel
 import lee.project.detectgallery.album.AlbumSheet
+import lee.project.detectgallery.feature.moment.MomentDetailScreen
+import lee.project.detectgallery.feature.moment.MomentsScreen
 import lee.project.detectgallery.feature.search.clean.CleanupScreen
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     LIVE("live", "카메라", Icons.Outlined.PhotoCamera),
     SEARCH("search", "검색", Icons.Outlined.Search),
     PEOPLE("people", "인물", Icons.Outlined.People),
+    MOMENTS("moments", "추억", Icons.Outlined.AutoAwesome),
 }
 
 /** "people/{personId}" 같은 하위 화면도 그 탭으로 본다. */
@@ -189,6 +193,13 @@ fun AppNavHost(
                     "people/{personId}",
                     arguments = listOf(navArgument("personId") { type = NavType.LongType }),
                 ) { entry -> PersonDetailScreen(onBack = { if (nav.isTop(entry)) nav.popBackStack() }) }
+                composable(Tab.MOMENTS.route) { entry ->
+                                        MomentsScreen(onOpen = { key -> if (nav.isTop(entry)) nav.navigate("moments/$key") })
+                                    }
+                                composable(
+                                        "moments/{key}",
+                                        arguments = listOf(navArgument("key") { type = NavType.LongType }),
+                                   ) { entry -> MomentDetailScreen(onBack = { if (nav.isTop(entry)) nav.popBackStack() }) }
             }
         }
     }

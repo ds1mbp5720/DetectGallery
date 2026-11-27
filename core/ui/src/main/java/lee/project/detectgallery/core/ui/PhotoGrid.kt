@@ -25,6 +25,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import androidx.compose.foundation.lazy.grid.LazyGridScope
 
 fun mediaUri(id: Long): Uri =
     ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
@@ -52,9 +53,17 @@ tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
-/** onClick 을 주지 않으면 누른 사진을 갤러리 앱으로 연다. 둥근 모서리 + 4dp 간격, 읽는 동안은 회색 칸. */
+/**
+ * onClick 을 주지 않으면 누른 사진을 갤러리 앱으로 연다. 둥근 모서리 + 4dp 간격, 읽는 동안은 회색 칸.
+ * header 는 사진 앞에 넣을 항목(전체 폭 머리 등). 머리를 그리드 밖에 두면 작은 화면에서 그리드 높이가 0 이 될 수 있어 함께 스크롤되게 넣는다 (C12).
+ */
 @Composable
-fun PhotoGrid(ids: List<Long>, modifier: Modifier = Modifier, onClick: ((Long) -> Unit)? = null) {
+fun PhotoGrid(
+    ids: List<Long>,
+    modifier: Modifier = Modifier,
+    onClick: ((Long) -> Unit)? = null,
+    header: (LazyGridScope.() -> Unit)? = null,
+) {
     val context = LocalContext.current
     LazyVerticalGrid(
         GridCells.Adaptive(104.dp),
@@ -63,6 +72,7 @@ fun PhotoGrid(ids: List<Long>, modifier: Modifier = Modifier, onClick: ((Long) -
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        header?.invoke(this)
         items(ids, key = { it }) { id ->
             AsyncImage(
                 model = mediaUri(id),

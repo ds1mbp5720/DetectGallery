@@ -20,6 +20,12 @@ interface PhotoSource {
 
     /** 사진별 화소 수(가로×세로). 겹치는 사진 중 남길 것을 고를 때 쓴다 (C10). refs() 와 같은 범위. */
     suspend fun pixelCounts(): Map<Long, Long>
+
+    /** 사진 EXIF 의 위도·경도 (C12). 권한이 없거나 일시 오류면 Unavailable(나중에 다시), 위치가 없으면 None. */
+    suspend fun location(mediaId: Long): LocationRead
+
+    /** 사진 위치 접근 권한(ACCESS_MEDIA_LOCATION)이 있는가 (C12). 없으면 위치를 읽지 않는다. */
+    fun canReadLocation(): Boolean
 }
 
 /** 색인·사진 쿼리용 정밀 분석. 구현: MediaPipe + ML Kit + TFLite (:core:ml). */
@@ -63,6 +69,18 @@ interface PhotoIndexRepository {
     suspend fun photosByLabels(labels: List<String>): List<Long> // confidence 내림차순
     suspend fun photosInRange(range: LongRange): Set<Long>
 
+    /** 추억 묶기(C12): 검색되는 사진(현재 버전)의 촬영 시각·위치. */
+    suspend fun momentPhotos(): List<MomentPhoto>
+
+    /** 사진별로 붙은 라벨 중 names 에 든 것 (추억 제목·대표 사진, C12). */
+    suspend fun labelsOf(names: Set<String>): Map<Long, Set<String>>
+
+    /** 위치를 아직 못 읽은 사진(권한이 없던 때 분석·일시 오류, C12). */
+    suspend fun locationPending(): List<Long>
+
+    /** 다시 읽은 위치를 저장하고 "읽음" 으로 표시한다. 값이 null 이면 위치 없음 (C12). */
+    suspend fun saveLocations(read: Map<Long, GeoPoint?>)
+
     /**
      * 인물 기능 끄기: 얼굴·인물(이름 포함)을 전부 지우고 모든 사진의 facesDone 을 false 로. 얼굴 벡터 캐시도 비운다.
      * 여러 번 불러도 결과가 같다 (색인이 끝날 때마다 "꺼져 있으면 다시 지우기" 로 쓴다).
@@ -71,6 +89,12 @@ interface PhotoIndexRepository {
 
     /** "얼굴 아님" 처럼 DB 의 얼굴 상태가 바뀐 뒤 얼굴 벡터 캐시를 비운다. 다음 검색 때 DB 에서 다시 읽는다. */
     suspend fun invalidateFaceCache()
+}
+
+/** 좌표 → 시·군·구 (C12). 구현: 앱에 넣은 지명 표(assets). 네트워크를 쓰지 않는다. */
+interface PlaceDirectory {
+    /** 가장 가까운 시·군·구. 너무 멀면(바다 위·해외) null. */
+    suspend fun nearest(p: GeoPoint): Place?
 }
 
 /** 색인 실행 요청. 구현: WorkManager (:core:data). 화면에서 "지금 다시 색인" 이 필요할 때 쓴다. */

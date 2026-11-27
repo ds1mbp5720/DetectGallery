@@ -32,6 +32,7 @@ androidxTestCore = "1.6.1"
 androidxTestRunner = "1.6.2"
 junitKtx = "1.3.0"
 material3 = "1.5.0"
+exifinterface = "1.4.2"
 
 [libraries]
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -66,6 +67,7 @@ camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = 
 camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 androidx-core = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
 
 mediapipe-vision = { module = "com.google.mediapipe:tasks-vision", version.ref = "mediapipe" }
 mlkit-labeling = { module = "com.google.mlkit:image-labeling", version.ref = "mlkitLabeling" }

@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.hilt.work)
     implementation(libs.androidx.core)
+    implementation(libs.androidx.exifinterface)
     ksp(libs.hilt.compiler)
     ksp(libs.hilt.androidx.compiler)
     testImplementation(libs.junit)

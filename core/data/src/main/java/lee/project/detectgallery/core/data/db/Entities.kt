@@ -15,6 +15,11 @@ data class PhotoEntity(
      * indexVersion 과 따로 둔다: 일시 실패(markFailed)는 indexVersion 만 0 으로 내리고 기존 벡터는 그대로 검색에 쓰여야 한다.
      */
     val vectorVersion: Int = 0,
+    /** EXIF 위도·경도 (C12). 없으면 null. 추억 묶기만 쓴다 */
+    val lat: Double? = null,
+    val lon: Double? = null,
+    /** 위치를 읽었는가(찾음·없음). false 면 다음 색인이 위치만 다시 읽는다 (권한을 나중에 허용·일시 오류). 기본값은 첫 배포 뒤 열 추가용 */
+    @ColumnInfo(defaultValue = "0") val locRead: Boolean = false,
 )
 
 @Entity(

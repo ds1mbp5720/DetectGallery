@@ -2,26 +2,24 @@ package lee.project.detectgallery
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LifecycleResumeEffect
-import lee.project.detectgallery.core.data.work.IndexScheduler
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
+import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -30,16 +28,31 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.activity.result.contract.ActivityResultContracts.RequestPermission
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import lee.project.detectgallery.core.data.work.IndexScheduler
 
 enum class GalleryAccess { FULL, PARTIAL, NONE }
 
@@ -60,21 +73,55 @@ private const val KEY_NOTIFICATIONS_ASKED = "notifications.asked"
 /** Android 13+ 이고, 아직 허용 안 했고, 우리가 한 번도 묻지 않았을 때만. 시스템도 두 번 거부하면 더 띄우지 않는다. */
 private fun shouldAskNotifications(context: Context): Boolean =
     Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
-            !context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).getBoolean(KEY_NOTIFICATIONS_ASKED, false)
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED &&
+            !context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE)
+                .getBoolean(KEY_NOTIFICATIONS_ASKED, false)
 
 private fun markNotificationsAsked(context: Context) {
-    context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit().putBoolean(KEY_NOTIFICATIONS_ASKED, true).apply()
+    context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit()
+        .putBoolean(KEY_NOTIFICATIONS_ASKED, true).apply()
 }
 
+
+private const val KEY_MEDIA_LOCATION_ASKED_FOR = "mediaLocation.askedFor"
+
+/**
+ * 사진 위치 권한이 없고 지금 사진 범위(전체·일부)에서 아직 묻지 않았을 때만 (C12). 새 설치는 사진 권한과 함께 받으므로 보통 업데이트 사용자다.
+ * 범위마다 한 번: 묻는 창이 없는 권한이라 부분 접근에서 조용히 거부돼도, 범위를 바꾸면 다시 받을 수 있게.
+ */
+private fun shouldAskMediaLocation(context: Context, access: GalleryAccess): Boolean =
+    ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_MEDIA_LOCATION
+    ) != PackageManager.PERMISSION_GRANTED &&
+            context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE)
+                .getString(KEY_MEDIA_LOCATION_ASKED_FOR, null) != access.name
+
+private fun markMediaLocationAsked(context: Context, access: GalleryAccess) {
+    context.getSharedPreferences(PREFS_APP, Context.MODE_PRIVATE).edit()
+        .putString(KEY_MEDIA_LOCATION_ASKED_FOR, access.name).apply()
+}
+
+// ACCESS_MEDIA_LOCATION: 사진 EXIF 의 위치(추억 묶기 C12). 사진 권한과 같이 요청하며 보통 따로 묻는 창이 없다(기기에서 확인)
 private fun galleryPermissions(): Array<String> = when {
     Build.VERSION.SDK_INT >= 34 -> arrayOf(
         Manifest.permission.READ_MEDIA_IMAGES,
-        Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+        Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
+        Manifest.permission.ACCESS_MEDIA_LOCATION
     )
 
-    Build.VERSION.SDK_INT >= 33 -> arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
-    else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    Build.VERSION.SDK_INT >= 33 -> arrayOf(
+        Manifest.permission.READ_MEDIA_IMAGES,
+        Manifest.permission.ACCESS_MEDIA_LOCATION
+    )
+
+    else -> arrayOf(
+        Manifest.permission.READ_EXTERNAL_STORAGE,
+        Manifest.permission.ACCESS_MEDIA_LOCATION
+    )
 }
 
 /** afterCurrent: 볼 수 있는 사진이 바뀌었을 수 있으면 true → 도는 중인 색인 뒤에 한 번 더 붙인다. */
@@ -106,13 +153,30 @@ fun GalleryAccessGate(content: @Composable (GalleryAccess) -> Unit) {
         denied = access == GalleryAccess.NONE
         scheduleIfAllowed(context, afterCurrent = true)
     }
-    // 분석 진행 알림 권한 (Android 13+). 사진 접근을 받은 뒤 한 번만 묻는다. 거부해도 분석은 그대로 된다
-    val notificationLauncher = rememberLauncherForActivityResult(RequestPermission()) { }
-    LaunchedEffect(access) {
-        if (access != GalleryAccess.NONE && shouldAskNotifications(context)) {
-            markNotificationsAsked(context)
-            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    // 사진 접근을 받은 뒤 한 번만 묻는 것: 분석 진행 알림(Android 13+), 사진 위치(C12 — 업데이트 전에 사진만 허용한 사용자).
+    // 한 번에 같이 묻는다(따로 띄우면 두 번째 요청이 무시될 수 있다). 거부해도 분석은 그대로 된다.
+    // 위치는 보통 창 없이 허용되고, 허용되면 도는 색인 뒤에 한 번 더 붙여 이미 분석한 사진의 위치만 다시 읽는다
+    val followUpLauncher =
+        rememberLauncherForActivityResult(RequestMultiplePermissions()) { result ->
+            if (result[Manifest.permission.ACCESS_MEDIA_LOCATION] == true) scheduleIfAllowed(
+                context,
+                afterCurrent = true
+            )
         }
+    LaunchedEffect(access) {
+        if (access == GalleryAccess.NONE) return@LaunchedEffect
+        val ask = buildList {
+            if (shouldAskMediaLocation(context, access)) {
+                markMediaLocationAsked(
+                    context,
+                    access
+                ); add(Manifest.permission.ACCESS_MEDIA_LOCATION)
+            }
+            if (shouldAskNotifications(context)) {
+                markNotificationsAsked(context); add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        if (ask.isNotEmpty()) followUpLauncher.launch(ask.toTypedArray())
     }
 
     // 앱으로 돌아올 때마다: 설정에서 권한을 바꿨을 수 있다.

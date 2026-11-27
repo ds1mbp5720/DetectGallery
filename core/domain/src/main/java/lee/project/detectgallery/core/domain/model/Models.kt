@@ -48,6 +48,32 @@ data class DetectedFace(
 
 data class Label(val name: String, val confidence: Float)
 
+/** 위도·경도 (C12). (0,0)·범위 밖은 위치 없음으로 본다. */
+data class GeoPoint(val lat: Double, val lon: Double) {
+    val isValid: Boolean get() = lat in -90.0..90.0 && lon in -180.0..180.0 && !(lat == 0.0 && lon == 0.0)
+}
+
+/** 추억 묶기(C12)의 입력 한 장. estimated = 앞뒤 사진에서 메운 위치(fillLocations, 저장하지 않음). */
+data class MomentPhoto(
+    val id: Long,
+    val takenAt: Long,
+    val location: GeoPoint?,
+    val estimated: Boolean = false
+)
+
+/** 시·도 + 시·군·구 (PlaceDirectory). */
+data class Place(val sido: String, val sigungu: String)
+
+/**
+ * 사진 위치 읽기 결과 (C12). Unavailable = 권한 없음·일시 오류 → 나중에 다시 읽는다. None = 읽었는데 위치가 없음.
+ * 둘을 가르지 않으면 권한을 나중에 허용해도, 일시 오류였어도 "위치 없음" 으로 영영 남는다.
+ */
+sealed interface LocationRead {
+    data class Found(val point: GeoPoint) : LocationRead
+    data object None : LocationRead
+    data object Unavailable : LocationRead
+}
+
 /** 사진 1장의 색인 결과. failed 면 version 0 으로 저장되어 다음 실행에서 재시도된다. */
 data class PhotoAnalysis(
     val ref: PhotoRef,
@@ -55,6 +81,8 @@ data class PhotoAnalysis(
     val scene: FloatArray? = null,
     val faces: List<DetectedFace> = emptyList(),
     val labels: List<Label> = emptyList(),   // ML Kit 라벨 + state:* 상태 태그
+    val location: GeoPoint? = null,          // EXIF 위도·경도 (C12). 권한이 없거나 위치가 없으면 null
+    val locationRead: Boolean = false,       // 위치를 읽었는가(찾음·없음). false 면 색인 실행 끝에 위치만 다시 읽는다
     val facesDone: Boolean = false,          // 얼굴 분석을 했는가 (faces 가 비어도 "얼굴 없음" 으로 확인했으면 true)
     val failed: Boolean = false,
 )
