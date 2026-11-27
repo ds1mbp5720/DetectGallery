@@ -1,5 +1,6 @@
 package lee.project.detectgallery
 
+import android.os.Build
 import androidx.compose.foundation.layout.Column
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
@@ -46,11 +47,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.navigation.NavBackStackEntry
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavController
 import lee.project.detectgallery.album.AlbumPickerIntent
 import lee.project.detectgallery.album.AlbumPickerViewModel
 import lee.project.detectgallery.album.AlbumSheet
+import lee.project.detectgallery.feature.search.clean.CleanupScreen
 
 private enum class Tab(val route: String, val label: String, val icon: ImageVector) {
     LIVE("live", "카메라", Icons.Outlined.PhotoCamera),
@@ -68,6 +71,7 @@ private fun NavController.isTop(entry: NavBackStackEntry) = currentBackStackEntr
 /**
  * @param sharedUri 다른 앱에서 공유받은 사진. 검색 탭으로 옮겨 사진으로 찾고, 받으면 onSharedConsumed(그 사진) 로 알린다.
  */
+@RequiresApi(Build.VERSION_CODES.R)
 @Composable
 fun AppNavHost(
     access: GalleryAccess,
@@ -167,12 +171,15 @@ fun AppNavHost(
             if (albumSheet) AlbumSheet(albumVm, onDismiss = { albumSheet = false })
             NavHost(nav, startDestination = Tab.SEARCH.route) {
                 composable(Tab.LIVE.route) { LiveScreen() }
-                composable(Tab.SEARCH.route) {
+                composable(Tab.SEARCH.route) { entry ->
                     SearchScreen(
                         sharedUri = sharedUri,
-                        onSharedConsumed = onSharedConsumed
+                        onSharedConsumed = onSharedConsumed,
+                        onOpenCleanup = { if (nav.isTop(entry)) nav.navigate("search/cleanup") },
                     )
                 }
+                // 검색 탭의 하위 화면(tabOf 가 "search/" 로 시작하면 검색 탭으로 본다)
+                composable("search/cleanup") { entry -> CleanupScreen(onBack = { if (nav.isTop(entry)) nav.popBackStack() }) }
                 // 이동·뒤로는 그 화면이 맨 위일 때만: 두 번 누르면 상세가 두 번 쌓이고, 뒤로를 연타하면 한 화면 더 빠진다.
                 // RESUMED 로 거르면 전환 애니메이션 중(STARTED)의 자동 닫기(인물이 사라짐 → onBack)까지 막혀 빈 상세에 남는다.
                 composable(Tab.PEOPLE.route) { entry ->

@@ -33,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -80,6 +81,7 @@ private val IMAGE_MODES = listOf(
 fun SearchScreen(
     sharedUri: String? = null,             // 다른 앱에서 공유받은 사진 (C9)
     onSharedConsumed: (String) -> Unit = {},   // 받아 간 사진을 알린다(그사이 온 다음 공유와 헷갈리지 않게)
+    onOpenCleanup: () -> Unit = {},        // 사진 정리
     vm: SearchViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -155,7 +157,7 @@ fun SearchScreen(
                 )
                 // 사진으로 찾는 중인데 결과도 안내도 없다 = 얼굴 고르기를 취소했다 (다른 경우는 안내가 있다)
                 state.queryUri != null -> Notice("찾을 사람을 고르지 않았어요. 인물을 다시 누르면 고를 수 있어요.")
-                else -> SearchGuide(state.indexProgress, Modifier.weight(1f))
+                else -> SearchGuide(state.indexProgress, onOpenCleanup, Modifier.weight(1f))
             }
         }
     }
@@ -245,7 +247,7 @@ private fun Notice(text: String) {
  * (상단 진행률 바만으로는 "왜 사진이 안 나오는지" 를 알기 어렵다)
  */
 @Composable
-private fun SearchGuide(progress: IndexProgress?, modifier: Modifier = Modifier) {
+private fun SearchGuide(progress: IndexProgress?, onOpenCleanup: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier
             .fillMaxWidth()
@@ -272,6 +274,9 @@ private fun SearchGuide(progress: IndexProgress?, modifier: Modifier = Modifier)
             "• 카메라 탭에서 음식·사람을 비추고 박스를 눌러요",
             style = MaterialTheme.typography.bodyMedium
         )
+        // 사진 정리 (C10). 분석 중에도 연다: 분석된 사진만 보인다는 안내는 정리 화면이 한다
+        Text("• 겹치는·흔들린·어두운 사진과 스크린샷은 모아서 정리할 수 있어요", style = MaterialTheme.typography.bodyMedium)
+        OutlinedButton(onClick = onOpenCleanup) { Text("사진 정리") }
     }
 }
 
